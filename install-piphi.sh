@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # Skrypt instalacyjny PiPhi Network na SenseCAP M1 z balenaOS
-# Wersja: 1.3
+# Wersja: 1.4
 # Autor: hattimon (z pomocą Grok, xAI)
 # Data: September 02, 2025
 # Opis: Instaluje PiPhi Network obok Helium Miner, z obsługą GPS dongle (U-Blox 7).
@@ -11,12 +11,6 @@
 function install() {
     echo -e "Module: Instalacja PiPhi Network z obsługą GPS"
     echo -e "================================================================"
-    
-    # Sprawdź, czy użytkownik to root
-    if [[ "$USER" != "root" ]]; then
-        echo -e "Musisz być zalogowany jako root. Użyj 'sudo su -'."
-        exit 1
-    fi
     
     # Sprawdź dostępność wget
     if ! command -v wget >/dev/null 2>&1; then
@@ -115,7 +109,7 @@ EOF
 echo -e ""
 echo -e "================================================================"
 echo -e "Skrypt instalacyjny PiPhi Network na SenseCAP M1 z balenaOS"
-echo -e "Wersja: 1.3 | Data: September 02, 2025"
+echo -e "Wersja: 1.4 | Data: September 02, 2025"
 echo -e "================================================================"
 echo -e "1 - Instalacja PiPhi Network z obsługą GPS"
 echo -e "2 - Wyjście"
