@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # Skrypt instalacyjny PiPhi Network na SenseCAP M1 z balenaOS
-# Wersja: 1.7
+# Wersja: 1.8
 # Autor: hattimon (z pomocą Grok, xAI)
 # Data: September 02, 2025
 # Opis: Instaluje PiPhi Network obok Helium Miner, z obsługą GPS dongle (U-Blox 7).
@@ -45,22 +45,24 @@ function install() {
     
     # Pobierz docker-compose.yml z linku PiPhi
     echo -e "Pobieranie docker-compose.yml..."
-    wget -O docker-compose-original.yml https://chibisafe.piphi.network/m2JmK11Z7tor.yml || { echo -e "Błąd pobierania docker-compose.yml"; exit 1; }
+    wget -O docker-compose.yml https://chibisafe.piphi.network/m2JmK11Z7tor.yml || { echo -e "Błąd pobierania docker-compose.yml"; exit 1; }
     
     # Tworzenie nowego docker-compose.yml z obsługą GPS
-    echo -e "Tworzenie poprawionego docker-compose.yml dla obsługi GPS..."
-    cat <<EOF > docker-compose.yml
+    echo -e "Modyfikacja docker-compose.yml dla obsługi GPS..."
+    cat <<EOF > docker-compose-modified.yml
 version: '3.8'
 services:
   piphi:
     image: piphi/piphi:latest
-$(sed -n '/services:/,/^[^ ]/p' docker-compose-original.yml | grep -v 'services:' | sed 's/^/    /')
+    restart: unless-stopped
+    ports:
+      - "31415:31415"
     devices:
       - "/dev/ttyACM0:/dev/ttyACM0"
     environment:
       - GPS_DEVICE=/dev/ttyACM0
 EOF
-    rm docker-compose-original.yml
+    mv docker-compose-modified.yml docker-compose.yml
     
     # Pobierz obraz Ubuntu
     echo -e "Pobieranie obrazu Ubuntu..."
@@ -91,6 +93,9 @@ EOF
     echo -e "Konfiguracja GPS w Ubuntu..."
     balena exec ubuntu-piphi gpsd /dev/ttyACM0 || { echo -e "Błąd uruchamiania gpsd"; exit 1; }
     
+    echo -e "Weryfikacja pliku docker-compose.yml..."
+    balena exec ubuntu-piphi bash -c "cd /piphi-network && docker compose config" || { echo -e "Błąd walidacji docker-compose.yml"; exit 1; }
+    
     echo -e "Uruchamianie usług PiPhi..."
     balena exec ubuntu-piphi bash -c "cd /piphi-network && docker compose pull && docker compose up -d" || { echo -e "Błąd uruchamiania PiPhi"; exit 1; }
     
@@ -113,7 +118,7 @@ EOF
 echo -e ""
 echo -e "================================================================"
 echo -e "Skrypt instalacyjny PiPhi Network na SenseCAP M1 z balenaOS"
-echo -e "Wersja: 1.7 | Data: September 02, 2025"
+echo -e "Wersja: 1.8 | Data: September 02, 2025"
 echo -e "================================================================"
 echo -e "1 - Instalacja PiPhi Network z obsługą GPS"
 echo -e "2 - Wyjście"
