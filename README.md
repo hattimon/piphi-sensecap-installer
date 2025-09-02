@@ -157,7 +157,7 @@ MIT License. Use at your own risk.
 
 ## Support My Work
 If you find this script helpful, consider supporting the project:
-[![ko-fi](https://ko-fi.com/img/githubbutton_sm.svg)](https://ko-fi.com/your-kofi-link)
+[![ko-fi](https://ko-fi.com/img/githubbutton_sm.svg)](https://ko-fi.com/B0B01KMW5G)
 
 ## Notes
 - If GPS issues persist, consider replacing balenaOS with Ubuntu for better USB support (see [Ubuntu Raspberry Pi](https://ubuntu.com/download/raspberry-pi)).
