@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # Skrypt instalacyjny PiPhi Network na SenseCAP M1 z balenaOS
-# Wersja: 2.9
+# Wersja: 2.10
 # Autor: hattimon (z pomocą Grok, xAI)
 # Data: September 02, 2025
 # Opis: Instaluje PiPhi Network obok Helium Miner, z obsługą GPS dongle (U-Blox 7).
@@ -130,13 +130,18 @@ EOL
     echo -e "Czekanie na uruchomienie kontenera Ubuntu (5 sekund)..."
     sleep 5
     
+    # Konfiguracja strefy czasowej w sposób nieinteraktywny
+    echo -e "Konfiguracja strefy czasowej (domyślnie Europe/Warsaw)..."
+    read -rp "Wpisz strefę czasową (np. Europe/Warsaw) lub naciśnij ENTER dla domyślnej: " timezone
+    if [ -z "$timezone" ]; then
+        timezone="Europe/Warsaw"
+    fi
+    balena exec ubuntu-piphi bash -c "apt-get update && apt-get install -y tzdata && echo '$timezone' > /etc/timezone && ln -sf /usr/share/zoneinfo/$timezone /etc/localtime && dpkg-reconfigure -f noninteractive tzdata" || { echo -e "Błąd konfiguracji strefy czasowej"; exit 1; }
+    
     # Konfiguracja w kontenerze Ubuntu
     echo -e "Instalacja zależności w Ubuntu..."
     balena exec ubuntu-piphi apt-get update || { echo -e "Błąd aktualizacji pakietów w Ubuntu"; exit 1; }
-    balena exec ubuntu-piphi apt-get install -y ca-certificates curl gnupg lsb-release usbutils gpsd gpsd-clients iputils-ping || { echo -e "Błąd instalacji zależności"; exit 1; }
-    
-    echo -e "Konfiguracja DNS w kontenerze..."
-    balena exec ubuntu-piphi bash -c "echo 'nameserver 8.8.8.8' > /etc/resolv.conf" || { echo -e "Błąd konfiguracji DNS"; exit 1; }
+    balena exec ubuntu-piphi apt-get install -y -o Dpkg::Options::="--force-confdef" -o Dpkg::Options::="--force-confold" ca-certificates curl gnupg lsb-release usbutils gpsd gpsd-clients iputils-ping docker-ce docker-ce-cli containerd.io docker-compose-plugin || { echo -e "Błąd instalacji zależności"; exit 1; }
     
     echo -e "Instalacja yq do modyfikacji YAML..."
     balena exec ubuntu-piphi bash -c 'curl -L https://github.com/mikefarah/yq/releases/download/v4.44.3/yq_linux_arm64 -o /usr/bin/yq && chmod +x /usr/bin/yq' || { echo -e "Błąd instalacji yq"; exit 1; }
@@ -146,9 +151,6 @@ EOL
     balena exec ubuntu-piphi bash -c 'curl -fsSL https://download.docker.com/linux/ubuntu/gpg | gpg --dearmor -o /etc/apt/keyrings/docker.gpg'
     balena exec ubuntu-piphi bash -c 'echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.gpg] https://download.docker.com/linux/ubuntu focal stable" > /etc/apt/sources.list.d/docker.list'
     balena exec ubuntu-piphi apt-get update || { echo -e "Błąd aktualizacji po dodaniu repozytorium Dockera"; exit 1; }
-    
-    echo -e "Instalacja Dockera i docker-compose..."
-    balena exec ubuntu-piphi apt-get install -y docker-ce docker-ce-cli containerd.io docker-compose-plugin || { echo -e "Błąd instalacji Dockera"; exit 1; }
     
     echo -e "Uruchamianie daemona Dockera..."
     balena exec ubuntu-piphi bash -c "nohup dockerd --host=unix:///var/run/docker.sock --storage-driver=vfs > /piphi-network/dockerd.log 2>&1 &" || { echo -e "Błąd uruchamiania daemona Dockera"; exit 1; }
@@ -171,7 +173,7 @@ EOL
     balena exec ubuntu-piphi bash -c "cd /piphi-network && yq e 'del(.version)' -i docker-compose.yml && yq e '.services.software.devices += [\"/dev/ttyACM0:/dev/ttyACM0\"] | .services.software.environment += [\"GPS_DEVICE=/dev/ttyACM0\"]' -i docker-compose.yml" || { echo -e "Błąd modyfikacji docker-compose.yml"; exit 1; }
     
     echo -e "Naprawa konfiguracji wolumenu dla Grafana..."
-    balena exec ubuntu-piphi bash -c "cd /piphi-network && yq e '.services.grafana.volumes = [\"grafana:/var/lib/grafana\"]' -i docker-compose.yml && yq e '.volumes += {\"grafana\": {\"driver\": \"local\"}}' -i docker-compose.yml" || { echo -e "Błąd naprawy wolumenu Grafana"; exit 1; }
+    balena exec ubuntu-piphi bash -c "cd /piphi-network && yq e '.services.grafana.volumes = [\"grafana:/var/lib/grafana\"] | .volumes += {\"grafana\": {\"driver\": \"local\"}}' -i docker-compose.yml" || { echo -e "Błąd naprawy wolumenu Grafana"; exit 1; }
     
     echo -e "Konfiguracja GPS w Ubuntu..."
     balena exec ubuntu-piphi gpsd /dev/ttyACM0 || { echo -e "Błąd uruchamiania gpsd"; exit 1; }
@@ -180,19 +182,7 @@ EOL
     balena exec ubuntu-piphi bash -c "cd /piphi-network && docker compose config" || { echo -e "Błąd walidacji docker-compose.yml"; exit 1; }
     
     echo -e "Sprawdzanie połączenia sieciowego..."
-    echo -e "Próba ping do 8.8.8.8..."
-    if balena exec ubuntu-piphi ping -c 3 8.8.8.8; then
-        echo -e "Połączenie z 8.8.8.8 działa. Sprawdzanie Docker Hub..."
-        if balena exec ubuntu-piphi ping -c 3 registry-1.docker.io; then
-            echo -e "Połączenie z Docker Hub działa."
-        else
-            echo -e "Błąd połączenia z Docker Hub. Kontynuowanie z nadzieją na działanie DNS..."
-        fi
-    else
-        echo -e "Błąd połączenia z 8.8.8.8. Sprawdź sieć na hoście i w kontenerze."
-        echo -e "Spróbuj ręcznie: balena exec -it ubuntu-piphi /bin/bash, ping -c 3 8.8.8.8"
-        exit 1
-    fi
+    balena exec ubuntu-piphi curl -I https://registry-1.docker.io/v2/ || { echo -e "Błąd połączenia z Docker Hub. Sprawdź sieć i spróbuj ponownie."; exit 1; }
     
     echo -e "Uruchamianie usług PiPhi..."
     for attempt in {1..3}; do
@@ -205,7 +195,7 @@ EOL
             sleep 10
             if [ $attempt -eq 3 ]; then
                 echo -e "Błąd: Nie udało się pobrać obrazów po 3 próbach."
-                echo -e "Sprawdź połączenie sieciowe: balena exec ubuntu-piphi ping -c 3 registry-1.docker.io"
+                echo -e "Sprawdź połączenie sieciowe: balena exec ubuntu-piphi curl -I https://registry-1.docker.io/v2/"
                 echo -e "Spróbuj ręcznie: balena exec -it ubuntu-piphi /bin/bash, cd /piphi-network, docker compose pull, docker compose up -d"
                 exit 1
             fi
@@ -233,7 +223,7 @@ EOL
 echo -e ""
 echo -e "================================================================"
 echo -e "Skrypt instalacyjny PiPhi Network na SenseCAP M1 z balenaOS"
-echo -e "Wersja: 2.9 | Data: September 02, 2025"
+echo -e "Wersja: 2.10 | Data: September 02, 2025"
 echo -e "================================================================"
 echo -e "1 - Instalacja PiPhi Network z obsługą GPS"
 echo -e "2 - Wyjście"
