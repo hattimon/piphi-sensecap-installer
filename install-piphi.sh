@@ -1,10 +1,10 @@
 #!/bin/bash
 
 # PiPhi Network Installation Script for SenseCAP M1 with balenaOS
-# Version: 2.13
+# Version: 2.11
 # Author: hattimon (with assistance from Grok, xAI)
-# Date: September 02, 2025, 06:30 PM CEST
-# Description: Installs PiPhi Network alongside Helium Miner, with GPS dongle (U-Blox 7) support and automatic startup on reboot.
+# Date: September 02, 2025, 07:00 PM CEST
+# Description: Installs PiPhi Network alongside Helium Miner, with GPS dongle (U-Blox 7) support and automatic startup on reboot, ensuring PiPhi panel availability.
 # Requirements: balenaOS (tested on 2.80.3+rev1), USB GPS dongle, SSH access as root.
 
 # Language setting (default: English)
@@ -34,11 +34,11 @@ MESSAGES[pl,helium_found]="Znaleziono kontener Helium: %s"
 MESSAGES[pl,loading_gps]="Ładowanie modułu GPS (cdc-acm) na hoście..."
 MESSAGES[pl,gps_detected]="GPS wykryty: %s"
 MESSAGES[pl,gps_not_detected]="GPS nie wykryty. Sprawdź podłączenie U-Blox 7 i uruchom 'lsusb'."
+MESSAGES[pl,removing_old]="Usuwanie istniejących instalacji (kontenerów i danych), jeśli istnieją..."
 MESSAGES[pl,downloading_compose]="Pobieranie docker-compose.yml..."
 MESSAGES[pl,download_error]="Błąd pobierania docker-compose.yml"
 MESSAGES[pl,verifying_compose]="Weryfikacja pobranego pliku docker-compose.yml..."
 MESSAGES[pl,compose_invalid]="Pobrany plik docker-compose.yml jest nieprawidłowy lub nie zawiera usługi 'software'. Używanie domyślnego pliku."
-MESSAGES[pl,removing_old]="Usuwanie istniejących instalacji (kontenerów i danych), jeśli istnieją..."
 MESSAGES[pl,pulling_ubuntu]="Pobieranie obrazu Ubuntu..."
 MESSAGES[pl,pull_error]="Błąd pobierania obrazu Ubuntu"
 MESSAGES[pl,running_container]="Uruchamianie kontenera Ubuntu z PiPhi..."
@@ -62,20 +62,20 @@ MESSAGES[pl,daemon_success]="Daemon Dockera uruchomiony poprawnie."
 MESSAGES[pl,waiting_daemon_progress]="Czekanie na daemon Dockera... (%ds sekund)"
 MESSAGES[pl,daemon_error]="Błąd: Daemon Dockera nie uruchomił się w ciągu 30 sekund."
 MESSAGES[pl,daemon_logs]="Sprawdź logi: balena exec ubuntu-piphi cat /piphi-network/dockerd.log"
-MESSAGES[pl,starting_services]="Uruchamianie usług PiPhi (w tym Grafana)..."
+MESSAGES[pl,starting_services]="Uruchamianie usług PiPhi (w tym panelu na porcie 31415)..."
 MESSAGES[pl,attempt_services]="Próba uruchamiania usług (%d/%d)..."
-MESSAGES[pl,services_success]="Usługi PiPhi uruchomione poprawnie. Czekanie na Grafanę..."
+MESSAGES[pl,services_success]="Usługi PiPhi uruchomione poprawnie. Czekanie na dostępność panelu..."
 MESSAGES[pl,services_error]="Błąd podczas uruchamiania usług. Czekanie 10 sekund przed kolejną próbą..."
 MESSAGES[pl,services_failed]="Błąd: Nie udało się uruchomić usług po 3 próbach."
 MESSAGES[pl,services_logs]="Sprawdź logi: balena exec ubuntu-piphi docker logs piphi-network-image"
 MESSAGES[pl,checking_network]="Sprawdzanie połączenia sieciowego..."
 MESSAGES[pl,network_error]="Błąd połączenia z Docker Hub. Ustawianie DNS i ponawianie..."
 MESSAGES[pl,restarting_container]="Restartowanie kontenera ubuntu-piphi..."
+MESSAGES[pl,waiting_piphi]="Czekanie na dostępność panelu PiPhi na porcie 31415 (maks. 60 sekund)..."
+MESSAGES[pl,piphi_success]="Panel PiPhi dostępny na http://<IP urządzenia>:31415!"
+MESSAGES[pl,piphi_error]="Błąd: Panel PiPhi nie jest dostępny po 60 sekundach."
 MESSAGES[pl,verifying_install]="Sprawdzanie instalacji..."
-MESSAGES[pl,grafana_wait]="Czekanie na uruchomienie Grafany (maks. 60 sekund)..."
-MESSAGES[pl,grafana_success]="Grafana uruchomiona poprawnie na porcie 3000."
-MESSAGES[pl,grafana_error]="Błąd: Grafana nie uruchomiła się w ciągu 60 sekund."
-MESSAGES[pl,install_complete]="Instalacja zakończona! Dostęp do PiPhi: http://<IP urządzenia>:31415"
+MESSAGES[pl,install_complete]="Instalacja zakończona! Panel PiPhi: http://<IP urządzenia>:31415"
 MESSAGES[pl,grafana_access]="Dostęp do Grafana: http://<IP urządzenia>:3000"
 MESSAGES[pl,gps_check]="Sprawdź GPS w Ubuntu: balena exec -it ubuntu-piphi cgps -s"
 MESSAGES[pl,piphi_logs]="Logi PiPhi: balena exec ubuntu-piphi docker logs piphi-network-image"
@@ -93,11 +93,11 @@ MESSAGES[en,helium_found]="Found Helium container: %s"
 MESSAGES[en,loading_gps]="Loading GPS module (cdc-acm) on the host..."
 MESSAGES[en,gps_detected]="GPS detected: %s"
 MESSAGES[en,gps_not_detected]="GPS not detected. Check U-Blox 7 connection and run 'lsusb'."
+MESSAGES[en,removing_old]="Removing existing installations (containers and data) if they exist..."
 MESSAGES[en,downloading_compose]="Downloading docker-compose.yml..."
 MESSAGES[en,download_error]="Error downloading docker-compose.yml"
 MESSAGES[en,verifying_compose]="Verifying downloaded docker-compose.yml..."
 MESSAGES[en,compose_invalid]="Downloaded docker-compose.yml is invalid or does not contain 'software' service. Using default file."
-MESSAGES[en,removing_old]="Removing existing installations (containers and data) if they exist..."
 MESSAGES[en,pulling_ubuntu]="Pulling Ubuntu image..."
 MESSAGES[en,pull_error]="Error pulling Ubuntu image"
 MESSAGES[en,running_container]="Running Ubuntu container with PiPhi..."
@@ -116,25 +116,25 @@ MESSAGES[en,installing_docker]="Installing Docker and docker-compose..."
 MESSAGES[en,docker_error]="Error installing Docker"
 MESSAGES[en,configuring_daemon]="Configuring automatic Docker daemon startup..."
 MESSAGES[en,starting_daemon]="Starting Docker daemon..."
-MESSAGES[en,waiting_daemon]="Waiting for Docker daemon to start (max 30 seconds)..."
+MESSAGES[en,waiting_daemon]="Waiting for Docker daemon to start (max 60 seconds)..."
 MESSAGES[en,daemon_success]="Docker daemon started successfully."
 MESSAGES[en,waiting_daemon_progress]="Waiting for Docker daemon... (%ds seconds)"
-MESSAGES[en,daemon_error]="Error: Docker daemon failed to start within 30 seconds."
+MESSAGES[en,daemon_error]="Error: Docker daemon failed to start within 60 seconds."
 MESSAGES[en,daemon_logs]="Check logs: balena exec ubuntu-piphi cat /piphi-network/dockerd.log"
-MESSAGES[en,starting_services]="Starting PiPhi services (including Grafana)..."
+MESSAGES[en,starting_services]="Starting PiPhi services (including panel on port 31415)..."
 MESSAGES[en,attempt_services]="Attempting to start services (%d/%d)..."
-MESSAGES[en,services_success]="PiPhi services started successfully. Waiting for Grafana..."
+MESSAGES[en,services_success]="PiPhi services started successfully. Waiting for panel availability..."
 MESSAGES[en,services_error]="Error starting services. Waiting 10 seconds before retrying..."
 MESSAGES[en,services_failed]="Error: Failed to start services after 3 attempts."
 MESSAGES[en,services_logs]="Check logs: balena exec ubuntu-piphi docker logs piphi-network-image"
 MESSAGES[en,checking_network]="Checking network connectivity..."
 MESSAGES[en,network_error]="Error connecting to Docker Hub. Setting DNS and retrying..."
 MESSAGES[en,restarting_container]="Restarting ubuntu-piphi container..."
+MESSAGES[en,waiting_piphi]="Waiting for PiPhi panel availability on port 31415 (max 60 seconds)..."
+MESSAGES[en,piphi_success]="PiPhi panel available at http://<device IP>:31415!"
+MESSAGES[en,piphi_error]="Error: PiPhi panel is not available after 60 seconds."
 MESSAGES[en,verifying_install]="Verifying installation..."
-MESSAGES[en,grafana_wait]="Waiting for Grafana to start (max 60 seconds)..."
-MESSAGES[en,grafana_success]="Grafana started successfully on port 3000."
-MESSAGES[en,grafana_error]="Error: Grafana failed to start within 60 seconds."
-MESSAGES[en,install_complete]="Installation complete! Access PiPhi: http://<device IP>:31415"
+MESSAGES[en,install_complete]="Installation complete! PiPhi panel: http://<device IP>:31415"
 MESSAGES[en,grafana_access]="Access Grafana: http://<device IP>:3000"
 MESSAGES[en,gps_check]="Check GPS in Ubuntu: balena exec -it ubuntu-piphi cgps -s"
 MESSAGES[en,piphi_logs]="PiPhi logs: balena exec ubuntu-piphi docker logs piphi-network-image"
@@ -269,7 +269,6 @@ volumes:
     driver: local
 EOL
     else
-        # Remove version attribute if present
         sed -i '/^version:/d' docker-compose.yml
     fi
 
@@ -340,6 +339,8 @@ EOL
     balena exec ubuntu-piphi bash -c 'echo "#!/bin/bash" > /usr/local/bin/start-docker.sh'
     balena exec ubuntu-piphi bash -c 'echo "nohup dockerd --host=unix:///var/run/docker.sock --storage-driver=vfs > /piphi-network/dockerd.log 2>&1 &" >> /usr/local/bin/start-docker.sh'
     balena exec ubuntu-piphi bash -c 'echo "sleep 10" >> /usr/local/bin/start-docker.sh'
+    balena exec ubuntu-piphi bash -c 'echo "cd /piphi-network && docker compose pull" >> /usr/local/bin/start-docker.sh'
+    balena exec ubuntu-piphi bash -c 'echo "sleep 5" >> /usr/local/bin/start-docker.sh'
     balena exec ubuntu-piphi bash -c 'echo "cd /piphi-network && docker compose up -d" >> /usr/local/bin/start-docker.sh'
     balena exec ubuntu-piphi bash -c 'chmod +x /usr/local/bin/start-docker.sh'
 
@@ -347,14 +348,14 @@ EOL
     msg "starting_daemon"
     balena exec ubuntu-piphi /usr/local/bin/start-docker.sh
     msg "waiting_daemon"
-    for i in {1..6}; do
+    for i in {1..12}; do
         if balena exec ubuntu-piphi bash -c "docker info" > /dev/null 2>&1; then
             msg "daemon_success"
             break
         fi
         msg "waiting_daemon_progress" $((i*5))
         sleep 5
-        if [ $i -eq 6 ]; then
+        if [ $i -eq 12 ]; then
             msg "daemon_error"
             msg "daemon_logs"
             exit 1
@@ -385,17 +386,17 @@ EOL
         fi
     done
 
-    # Wait for Grafana to start
-    msg "grafana_wait"
+    # Wait for PiPhi panel availability
+    msg "waiting_piphi"
     for i in {1..12}; do
-        if balena exec ubuntu-piphi bash -c "docker ps | grep grafana | grep -q Up"; then
-            msg "grafana_success"
+        if balena exec ubuntu-piphi bash -c "nc -z 127.0.0.1 31415" 2>/dev/null; then
+            msg "piphi_success"
             break
         fi
         msg "waiting_daemon_progress" $((i*5))
         sleep 5
         if [ $i -eq 12 ]; then
-            msg "grafana_error"
+            msg "piphi_error"
             exit 1
         fi
     done
@@ -437,14 +438,14 @@ echo -e ""
 msg "separator"
 if [ "$LANGUAGE" = "pl" ]; then
     echo -e "Skrypt instalacyjny PiPhi Network na SenseCAP M1 z balenaOS"
-    echo -e "Wersja: 2.13 | Data: 02 września 2025, 18:30 CEST"
+    echo -e "Wersja: 2.11 | Data: 02 września 2025, 19:00 CEST"
     echo -e "================================================================"
     echo -e "1 - Instalacja PiPhi Network z obsługą GPS i automatycznym startem"
     echo -e "2 - Wyjście"
     echo -e "3 - Zmień język"
 else
     echo -e "PiPhi Network Installation Script for SenseCAP M1 with balenaOS"
-    echo -e "Version: 2.13 | Date: September 02, 2025, 06:30 PM CEST"
+    echo -e "Version: 2.11 | Date: September 02, 2025, 07:00 PM CEST"
     echo -e "================================================================"
     echo -e "1 - Install PiPhi Network with GPS support and automatic startup"
     echo -e "2 - Exit"
