@@ -1,9 +1,9 @@
 #!/bin/bash
 
 # PiPhi Network Installation Script for SenseCAP M1 with balenaOS
-# Version: 2.22
+# Version: 2.23
 # Author: hattimon (with assistance from Grok, xAI)
-# Date: September 02, 2025, 11:45 PM CEST
+# Date: September 03, 2025, 12:50 AM CEST
 # Description: Installs PiPhi Network alongside Helium Miner, with GPS dongle (U-Blox 7) support and automatic startup on reboot, ensuring PiPhi panel availability and Docker daemon auto-restart.
 # Requirements: balenaOS (tested on 2.80.3+rev1), USB GPS dongle, SSH access as root.
 
@@ -332,9 +332,14 @@ EOL
 echo "[$(date)] Starting start-docker.sh" >> /piphi-network/dockerd.log
 while true; do
     if ! pgrep dockerd > /dev/null; then
-        echo "[$(date)] Starting dockerd..." >> /piphi-network/dockerd.log
-        nohup dockerd --host=unix:///var/run/docker.sock --storage-driver=vfs >> /piphi-network/dockerd.log 2>&1 &
+        echo "[$(date)] Starting dockerd with overlay2..." >> /piphi-network/dockerd.log
+        nohup dockerd --host=unix:///var/run/docker.sock --storage-driver=overlay2 >> /piphi-network/dockerd.log 2>&1 &
         sleep 10
+        if ! pgrep dockerd > /dev/null; then
+            echo "[$(date)] Failed to start dockerd, retrying with vfs..." >> /piphi-network/dockerd.log
+            nohup dockerd --host=unix:///var/run/docker.sock --storage-driver=vfs >> /piphi-network/dockerd.log 2>&1 &
+            sleep 10
+        fi
     fi
     if [ -e /dev/ttyACM0 ]; then
         echo "[$(date)] Starting gpsd..." >> /piphi-network/dockerd.log
@@ -484,7 +489,8 @@ EOL
     }
 
     msg "installing_docker"
-    exec_with_retry "export DEBIAN_FRONTEND=noninteractive && apt-get install -y -o Dpkg::Options::=\"--force-confdef\" -o Dpkg::Options::=\"--force-confold\" docker-ce docker-ce-cli containerd.io docker-compose-plugin" || {
+    # Install Docker without invoking systemd
+    exec_with_retry "export DEBIAN_FRONTEND=noninteractive && apt-get install -y -o Dpkg::Options::=\"--force-confdef\" -o Dpkg::Options::=\"--force-confold\" docker-ce docker-ce-cli containerd.io docker-compose-plugin --no-install-recommends && systemctl disable docker.service docker.socket || true" || {
         msg "docker_error"
         balena logs ubuntu-piphi
         exit 1
@@ -602,14 +608,14 @@ echo -e ""
 msg "separator"
 if [ "$LANGUAGE" = "pl" ]; then
     echo -e "Skrypt instalacyjny PiPhi Network na SenseCAP M1 z balenaOS"
-    echo -e "Wersja: 2.22 | Data: 02 września 2025, 23:45 CEST"
+    echo -e "Wersja: 2.23 | Data: 03 września 2025, 00:50 CEST"
     echo -e "================================================================"
     echo -e "1 - Instalacja PiPhi Network z obsługą GPS i automatycznym startem"
     echo -e "2 - Wyjście"
     echo -e "3 - Zmień na język Angielski"
 else
     echo -e "PiPhi Network Installation Script for SenseCAP M1 with balenaOS"
-    echo -e "Version: 2.22 | Date: September 02, 2025, 11:45 PM CEST"
+    echo -e "Version: 2.23 | Date: September 03, 2025, 12:50 AM CEST"
     echo -e "================================================================"
     echo -e "1 - Install PiPhi Network with GPS support and automatic startup"
     echo -e "2 - Exit"
