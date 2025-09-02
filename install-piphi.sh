@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # Skrypt instalacyjny PiPhi Network na SenseCAP M1 z balenaOS
-# Wersja: 1.6
+# Wersja: 1.7
 # Autor: hattimon (z pomocą Grok, xAI)
 # Data: September 02, 2025
 # Opis: Instaluje PiPhi Network obok Helium Miner, z obsługą GPS dongle (U-Blox 7).
@@ -45,34 +45,30 @@ function install() {
     
     # Pobierz docker-compose.yml z linku PiPhi
     echo -e "Pobieranie docker-compose.yml..."
-    wget -O docker-compose.yml https://chibisafe.piphi.network/m2JmK11Z7tor.yml || { echo -e "Błąd pobierania docker-compose.yml"; exit 1; }
+    wget -O docker-compose-original.yml https://chibisafe.piphi.network/m2JmK11Z7tor.yml || { echo -e "Błąd pobierania docker-compose.yml"; exit 1; }
     
-    # Tworzenie nowego docker-compose.yml z poprawioną strukturą
+    # Tworzenie nowego docker-compose.yml z obsługą GPS
     echo -e "Tworzenie poprawionego docker-compose.yml dla obsługi GPS..."
     cat <<EOF > docker-compose.yml
 version: '3.8'
 services:
   piphi:
     image: piphi/piphi:latest
-    $(cat docker-compose.yml | grep -v 'version:\|services:') # Zachowaj oryginalną konfigurację usługi piphi
+$(sed -n '/services:/,/^[^ ]/p' docker-compose-original.yml | grep -v 'services:' | sed 's/^/    /')
     devices:
       - "/dev/ttyACM0:/dev/ttyACM0"
     environment:
       - GPS_DEVICE=/dev/ttyACM0
-    deploy:
-      resources:
-        limits:
-          cpus: '0.5'
-          memory: 512M
 EOF
+    rm docker-compose-original.yml
     
     # Pobierz obraz Ubuntu
     echo -e "Pobieranie obrazu Ubuntu..."
     balena pull ubuntu:20.04 || { echo -e "Błąd pobierania obrazu Ubuntu"; exit 1; }
     
-    # Uruchom kontener Ubuntu w tle z procesem utrzymującym aktywność
+    # Uruchom kontener Ubuntu z ograniczeniem zasobów
     echo -e "Uruchamianie kontenera Ubuntu z PiPhi..."
-    balena run -d --privileged -v /mnt/data/piphi-network:/piphi-network -p 31415:31415 --name ubuntu-piphi --restart unless-stopped ubuntu:20.04 tail -f /dev/null
+    balena run -d --privileged -v /mnt/data/piphi-network:/piphi-network -p 31415:31415 --cpus="0.5" --memory="512m" --name ubuntu-piphi --restart unless-stopped ubuntu:20.04 tail -f /dev/null
     
     # Poczekaj, aż kontener będzie w pełni uruchomiony
     echo -e "Czekanie na uruchomienie kontenera Ubuntu (5 sekund)..."
@@ -117,7 +113,7 @@ EOF
 echo -e ""
 echo -e "================================================================"
 echo -e "Skrypt instalacyjny PiPhi Network na SenseCAP M1 z balenaOS"
-echo -e "Wersja: 1.6 | Data: September 02, 2025"
+echo -e "Wersja: 1.7 | Data: September 02, 2025"
 echo -e "================================================================"
 echo -e "1 - Instalacja PiPhi Network z obsługą GPS"
 echo -e "2 - Wyjście"
