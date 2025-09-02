@@ -1,9 +1,9 @@
 #!/bin/bash
 
 # PiPhi Network Installation Script for SenseCAP M1 with balenaOS
-# Version: 2.19
+# Version: 2.20
 # Author: hattimon (with assistance from Grok, xAI)
-# Date: September 02, 2025, 10:00 PM CEST
+# Date: September 02, 2025, 10:30 PM CEST
 # Description: Installs PiPhi Network alongside Helium Miner, with GPS dongle (U-Blox 7) support and automatic startup on reboot, ensuring PiPhi panel availability.
 # Requirements: balenaOS (tested on 2.80.3+rev1), USB GPS dongle, SSH access as root.
 
@@ -61,7 +61,7 @@ MESSAGES[pl,timezone_detected]="Wykryta strefa czasowa: %s"
 MESSAGES[pl,timezone_default]="Nie wykryto strefy czasowej. Ustawianie uniwersalnej: Etc/UTC"
 MESSAGES[pl,timezone_error]="Błąd ustawiania strefy czasowej w kontenerze"
 MESSAGES[pl,installing_deps]="Instalacja zależności w Ubuntu..."
-MESSAGES[pl,deps_error]="Błąd instalacji podstawowych zależności. Sprawdź logi: balena logs ubuntu-piphi lub balena exec ubuntu-piphi cat /var/log/apt/term.log"
+MESSAGES[pl,deps_error]="Błąd instalacji podstawowych zależności. Sprawdź logi: balena logs ubuntu-piphi lub balena exec ubuntu-piphi cat /tmp/apt.log"
 MESSAGES[pl,installing_yq]="Instalacja yq do modyfikacji YAML..."
 MESSAGES[pl,yq_error]="Błąd instalacji yq"
 MESSAGES[pl,configuring_repo]="Konfiguracja repozytorium Dockera..."
@@ -125,7 +125,7 @@ MESSAGES[en,timezone_detected]="Detected timezone: %s"
 MESSAGES[en,timezone_default]="No timezone detected. Setting universal: Etc/UTC"
 MESSAGES[en,timezone_error]="Error setting timezone in container"
 MESSAGES[en,installing_deps]="Installing dependencies in Ubuntu..."
-MESSAGES[en,deps_error]="Error installing core dependencies. Check logs: balena logs ubuntu-piphi or balena exec ubuntu-piphi cat /var/log/apt/term.log"
+MESSAGES[en,deps_error]="Error installing core dependencies. Check logs: balena logs ubuntu-piphi or balena exec ubuntu-piphi cat /tmp/apt.log"
 MESSAGES[en,installing_yq]="Installing yq for YAML modification..."
 MESSAGES[en,yq_error]="Error installing yq"
 MESSAGES[en,configuring_repo]="Configuring Docker repository..."
@@ -187,7 +187,7 @@ function exec_with_retry() {
     local max_attempts=3
     local attempt=1
     while [ $attempt -le $max_attempts ]; do
-        if balena exec -t ubuntu-piphi bash -c "$cmd"; then
+        if balena exec -t ubuntu-piphi bash -c "$cmd 2>&1 | tee -a /tmp/apt.log"; then
             return 0
         fi
         msg "waiting_container_progress" $((attempt*5))
@@ -254,7 +254,7 @@ function install() {
     msg "verifying_compose"
     if ! grep -q "services:" docker-compose.yml || ! grep -q "software:" docker-compose.yml; then
         msg "compose_invalid"
-        cat > docker-compose.yml << EOL
+        cat > docker-compose.yml << 'EOL'
 services:
   db:
     container_name: db
@@ -371,27 +371,46 @@ EOL
         exit 1
     }
 
-    # Preconfigure tzdata to avoid interactive prompts (in container)
-    exec_with_retry "echo 'tzdata tzdata/Areas select Europe' | debconf-set-selections" || {
-        msg "timezone_error"
-        balena logs ubuntu-piphi
-        exit 1
-    }
-    exec_with_retry "echo 'tzdata tzdata/Zones/Europe select Warsaw' | debconf-set-selections" || {
-        msg "timezone_error"
-        balena logs ubuntu-piphi
-        exit 1
-    }
+    # Detect timezone from host
+    msg "detecting_timezone"
+    TIMEZONE=$(timedatectl | awk '/Time zone:/ {print $3}' || cat /etc/timezone 2>/dev/null || echo "Etc/UTC")
+    if [ "$TIMEZONE" = "Etc/UTC" ] || [ -z "$TIMEZONE" ]; then
+        msg "timezone_default"
+        AREA="Etc"
+        ZONE="UTC"
+    else
+        msg "timezone_detected" "$TIMEZONE"
+        AREA=$(echo "$TIMEZONE" | cut -d'/' -f1)
+        ZONE=$(echo "$TIMEZONE" | cut -d'/' -f2)
+    fi
 
-    # Configure inside the Ubuntu container with retries
+    # Preconfigure tzdata to avoid interactive prompts
     msg "installing_deps"
+    exec_with_retry "echo 'tzdata tzdata/Areas select $AREA' | debconf-set-selections" || {
+        msg "timezone_error"
+        balena logs ubuntu-piphi
+        exit 1
+    }
+    exec_with_retry "echo 'tzdata tzdata/Zones/$AREA select $ZONE' | debconf-set-selections" || {
+        msg "timezone_error"
+        balena logs ubuntu-piphi
+        exit 1
+    }
     exec_with_retry "export DEBIAN_FRONTEND=noninteractive && apt-get update" || {
         msg "deps_error"
         balena logs ubuntu-piphi
         exit 1
     }
-    exec_with_retry "export DEBIAN_FRONTEND=noninteractive && apt-get install -y -o Dpkg::Options::=\"--force-confdef\" -o Dpkg::Options::=\"--force-confold\" ca-certificates curl gnupg lsb-release usbutils gpsd gpsd-clients iputils-ping" || {
+    exec_with_retry "export DEBIAN_FRONTEND=noninteractive && apt-get install -y -o Dpkg::Options::=\"--force-confdef\" -o Dpkg::Options::=\"--force-confold\" ca-certificates curl gnupg lsb-release usbutils gpsd gpsd-clients iputils-ping netcat-openbsd tzdata" || {
         msg "deps_error"
+        balena logs ubuntu-piphi
+        exit 1
+    }
+
+    # Start gpsd in container
+    msg "loading_gps"
+    exec_with_retry "gpsd /dev/ttyACM0" || {
+        msg "gps_not_detected"
         balena logs ubuntu-piphi
         exit 1
     }
@@ -424,14 +443,14 @@ EOL
         balena logs ubuntu-piphi
         exit 1
     }
-    exec_with_retry "apt-get update" || {
+    exec_with_retry "export DEBIAN_FRONTEND=noninteractive && apt-get update" || {
         msg "repo_error"
         balena logs ubuntu-piphi
         exit 1
     }
 
     msg "installing_docker"
-    exec_with_retry "apt-get install -y -o Dpkg::Options::=\"--force-confdef\" -o Dpkg::Options::=\"--force-confold\" docker-ce docker-ce-cli containerd.io docker-compose-plugin" || {
+    exec_with_retry "export DEBIAN_FRONTEND=noninteractive && apt-get install -y -o Dpkg::Options::=\"--force-confdef\" -o Dpkg::Options::=\"--force-confold\" docker-ce docker-ce-cli containerd.io docker-compose-plugin" || {
         msg "docker_error"
         balena logs ubuntu-piphi
         exit 1
@@ -439,10 +458,12 @@ EOL
 
     # Create startup script for Docker daemon and services (in container)
     msg "configuring_daemon"
-    exec_with_retry "cat > /piphi-network/start-docker.sh << EOL
+    exec_with_retry "cat > /piphi-network/start-docker.sh << 'EOL'
 #!/bin/bash
 nohup dockerd --host=unix:///var/run/docker.sock --storage-driver=vfs > /piphi-network/dockerd.log 2>&1 &
 sleep 10
+gpsd /dev/ttyACM0
+sleep 5
 cd /piphi-network && docker compose pull
 sleep 5
 cd /piphi-network && docker compose up -d
@@ -539,7 +560,7 @@ EOL" || {
     # Verification (on host and in container)
     msg "verifying_install"
     balena ps
-    exec_with_retry "docker compose ps"
+    exec_with_retry "cd /piphi-network && docker compose ps"
 
     # Verify GPS (optional check, in container)
     if exec_with_retry "cgps -s" 2>/dev/null; then
@@ -569,14 +590,14 @@ echo -e ""
 msg "separator"
 if [ "$LANGUAGE" = "pl" ]; then
     echo -e "Skrypt instalacyjny PiPhi Network na SenseCAP M1 z balenaOS"
-    echo -e "Wersja: 2.18 | Data: 02 września 2025, 22:30 CEST"
+    echo -e "Wersja: 2.20 | Data: 02 września 2025, 22:30 CEST"
     echo -e "================================================================"
     echo -e "1 - Instalacja PiPhi Network z obsługą GPS i automatycznym startem"
     echo -e "2 - Wyjście"
     echo -e "3 - Zmień na język Angielski"
 else
     echo -e "PiPhi Network Installation Script for SenseCAP M1 with balenaOS"
-    echo -e "Version: 2.18 | Date: September 02, 2025, 10:30 PM CEST"
+    echo -e "Version: 2.20 | Date: September 02, 2025, 10:30 PM CEST"
     echo -e "================================================================"
     echo -e "1 - Install PiPhi Network with GPS support and automatic startup"
     echo -e "2 - Exit"
