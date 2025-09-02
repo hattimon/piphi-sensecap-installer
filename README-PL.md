@@ -47,23 +47,29 @@
    - Wybierz opcję 1, aby rozpocząć instalację.
    - Opcjonalnie, wybierz opcję 3, aby zmienić język na polski.
 
-6. **Sprawdź panel PiPhi**:
+   * Jeżeli podczas instalacji pojawi się błąd (np. „pobieranie obrazu Ubuntu nie powiodło się po 3 próbach”),
+odczekaj chwilę i uruchom ponownie:
+   ```
+   ./install-piphi.sh
+   ```
+
+7. **Sprawdź panel PiPhi**:
    - Otwórz przeglądarkę: `http://<IP urządzenia>:31415`.
    - Sprawdź Grafana: `http://<IP urządzenia>:3000`.
 
-7. **Sprawdź GPS** (na hoście):
+8. **Sprawdź GPS** (na hoście):
    ```
    balena exec -it ubuntu-piphi cgps -s
    ```
    - Jeśli GPS nie działa, upewnij się, że urządzenie jest na zewnątrz (fix może zająć 1–5 minut).
 
-8. **Sprawdź status usług** (na hoście):
+9. **Sprawdź status usług** (na hoście):
    ```
    balena ps -a
    balena exec ubuntu-piphi docker compose ps
    ```
 
-9. **Sprawdź logi w razie błędu** (na hoście i w kontenerze):
+10. **Sprawdź logi w razie błędu** (na hoście i w kontenerze):
    - Logi kontenera:
      ```
      balena logs ubuntu-piphi
@@ -81,7 +87,7 @@
      balena exec ubuntu-piphi docker logs piphi-network-image
      ```
 
-10. **Test restartu urządzenia** (na hoście):
+11. **Test restartu urządzenia** (na hoście):
     ```
     reboot
     ```
