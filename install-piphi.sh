@@ -118,13 +118,10 @@ volumes:
 EOL
     fi
     
-    # Sprawdź i usuń istniejący kontener ubuntu-piphi
-    echo -e "Sprawdzanie istniejącego kontenera ubuntu-piphi..."
-    if balena ps -a --format "{{.Names}}" | grep -q ubuntu-piphi; then
-        echo -e "Znaleziono istniejący kontener ubuntu-piphi. Usuwanie..."
-        balena stop ubuntu-piphi
-        balena rm ubuntu-piphi
-    fi
+    # Usuń istniejący kontener ubuntu-piphi, jeśli istnieje
+    echo -e "Usuwanie istniejącego kontenera ubuntu-piphi, jeśli istnieje..."
+    balena stop ubuntu-piphi 2>/dev/null || true
+    balena rm ubuntu-piphi 2>/dev/null || true
     
     # Pobierz obraz Ubuntu
     echo -e "Pobieranie obrazu Ubuntu..."
@@ -132,7 +129,7 @@ EOL
     
     # Uruchom kontener Ubuntu z odpowiednimi zasobami
     echo -e "Uruchamianie kontenera Ubuntu z PiPhi..."
-    balena run -d --privileged -v /mnt/data/piphi-network:/piphi-network -p 31415:31415 -p 5432:5432 -p 3000:3000 --cpus="2.0" --memory="2g" --name ubuntu-piphi --restart unless-stopped ubuntu:20.04 tail -f /dev/null
+    balena run -d --privileged -v /mnt/data/piphi-network:/piphi-network -p 31415:31415 -p 5432:5432 -p 3000:3000 --cpus="2.0" --memory="2g" --name ubuntu-piphi --restart unless-stopped ubuntu:20.04 tail -f /dev/null || { echo -e "Błąd uruchamiania kontenera Ubuntu"; exit 1; }
     
     # Poczekaj, aż kontener będzie w pełni uruchomiony
     echo -e "Czekanie na uruchomienie kontenera Ubuntu (5 sekund)..."
@@ -157,7 +154,7 @@ EOL
     echo -e "Konfiguracja repozytorium Dockera..."
     balena exec ubuntu-piphi mkdir -p /etc/apt/keyrings
     balena exec ubuntu-piphi bash -c 'curl -fsSL https://download.docker.com/linux/ubuntu/gpg | gpg --dearmor -o /etc/apt/keyrings/docker.gpg'
-    balena exec ubuntu-piphi bash -c 'echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.gpg] https://download.docker.com/linux/ubuntu $(lsb_release -cs) stable" > /etc/apt/sources.list.d/docker.list'
+    balena exec ubuntu-piphi bash -c 'echo "deb [arch=arm64 signed-by=/etc/apt/keyrings/docker.gpg] https://download.docker.com/linux/ubuntu focal stable" > /etc/apt/sources.list.d/docker.list'
     balena exec ubuntu-piphi apt-get update || { echo -e "Błąd aktualizacji po dodaniu repozytorium Dockera"; exit 1; }
     
     echo -e "Instalacja Dockera i docker-compose..."
