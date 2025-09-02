@@ -46,6 +46,11 @@
    ```
    - Select option 1 to start installation.
    - Optionally, select option 3 to switch language to Polish.
+   * If an error occurs during installation (e.g., “pulling Ubuntu image after 3 attempts”),
+wait a while and restart:
+   ```
+   ./install-piphi.sh
+   ```
 
 6. **Check PiPhi dashboard**:
    - Open browser: `http://<device IP>:31415`.
