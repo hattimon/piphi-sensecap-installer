@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # Skrypt instalacyjny PiPhi Network na SenseCAP M1 z balenaOS
-# Wersja: 1.5
+# Wersja: 1.6
 # Autor: hattimon (z pomocą Grok, xAI)
 # Data: September 02, 2025
 # Opis: Instaluje PiPhi Network obok Helium Miner, z obsługą GPS dongle (U-Blox 7).
@@ -33,8 +33,8 @@ function install() {
     fi
     echo -e "Znaleziono kontener Helium: $helium_container"
     
-    # Ładowanie modułu GPS (U-Blox 7)
-    echo -e "Ładowanie modułu GPS (cdc-acm)..."
+    # Ładowanie modułu GPS (U-Blox 7) na hoście
+    echo -e "Ładowanie modułu GPS (cdc-acm) na hoście..."
     modprobe cdc-acm
     if ls /dev/ttyACM* >/dev/null 2>&1; then
         echo -e "GPS wykryty: $(ls /dev/ttyACM*)"
@@ -47,22 +47,24 @@ function install() {
     echo -e "Pobieranie docker-compose.yml..."
     wget -O docker-compose.yml https://chibisafe.piphi.network/m2JmK11Z7tor.yml || { echo -e "Błąd pobierania docker-compose.yml"; exit 1; }
     
-    # Modyfikacja docker-compose.yml dla GPS i optymalizacji zasobów
-    echo -e "Modyfikacja docker-compose.yml dla obsługi GPS..."
-    cat <<EOF >> docker-compose.yml.temp
-devices:
-  - "/dev/ttyACM0:/dev/ttyACM0"
-environment:
-  - GPS_DEVICE=/dev/ttyACM0
-deploy:
-  resources:
-    limits:
-      cpus: '0.5'
-      memory: 512M
+    # Tworzenie nowego docker-compose.yml z poprawioną strukturą
+    echo -e "Tworzenie poprawionego docker-compose.yml dla obsługi GPS..."
+    cat <<EOF > docker-compose.yml
+version: '3.8'
+services:
+  piphi:
+    image: piphi/piphi:latest
+    $(cat docker-compose.yml | grep -v 'version:\|services:') # Zachowaj oryginalną konfigurację usługi piphi
+    devices:
+      - "/dev/ttyACM0:/dev/ttyACM0"
+    environment:
+      - GPS_DEVICE=/dev/ttyACM0
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 512M
 EOF
-    cat docker-compose.yml docker-compose.yml.temp > docker-compose-updated.yml
-    mv docker-compose-updated.yml docker-compose.yml
-    rm docker-compose.yml.temp
     
     # Pobierz obraz Ubuntu
     echo -e "Pobieranie obrazu Ubuntu..."
@@ -91,7 +93,6 @@ EOF
     balena exec ubuntu-piphi apt-get install -y docker-ce docker-ce-cli containerd.io docker-compose-plugin || { echo -e "Błąd instalacji Dockera"; exit 1; }
     
     echo -e "Konfiguracja GPS w Ubuntu..."
-    balena exec ubuntu-piphi modprobe cdc-acm
     balena exec ubuntu-piphi gpsd /dev/ttyACM0 || { echo -e "Błąd uruchamiania gpsd"; exit 1; }
     
     echo -e "Uruchamianie usług PiPhi..."
@@ -116,7 +117,7 @@ EOF
 echo -e ""
 echo -e "================================================================"
 echo -e "Skrypt instalacyjny PiPhi Network na SenseCAP M1 z balenaOS"
-echo -e "Wersja: 1.5 | Data: September 02, 2025"
+echo -e "Wersja: 1.6 | Data: September 02, 2025"
 echo -e "================================================================"
 echo -e "1 - Instalacja PiPhi Network z obsługą GPS"
 echo -e "2 - Wyjście"
