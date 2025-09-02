@@ -1,9 +1,9 @@
 #!/bin/bash
 
 # PiPhi Network Installation Script for SenseCAP M1 with balenaOS
-# Version: 2.12
+# Version: 2.13
 # Author: hattimon (with assistance from Grok, xAI)
-# Date: September 02, 2025, 08:30 PM CEST
+# Date: September 02, 2025, 08:45 PM CEST
 # Description: Installs PiPhi Network alongside Helium Miner, with GPS dongle (U-Blox 7) support and automatic startup on reboot, ensuring PiPhi panel availability.
 # Requirements: balenaOS (tested on 2.80.3+rev1), USB GPS dongle, SSH access as root.
 
@@ -153,12 +153,31 @@ function msg() {
 function wait_for_container() {
     local container_name=$1
     local max_wait=$2
-    for i in $(seq 1 $((max_wait/5))); do
+    local attempt
+    for attempt in $(seq 1 $((max_wait/5))); do
         if balena ps -a | grep "$container_name" | grep -q "Up"; then
+            sleep 2  # Additional delay to ensure container is fully ready
             return 0
         fi
-        msg "waiting_container_progress" $((i*5))
+        msg "waiting_container_progress" $((attempt*5))
         sleep 5
+    done
+    msg "run_error"
+    exit 1
+}
+
+# Function to execute command with retries
+function exec_with_retry() {
+    local cmd=$1
+    local max_attempts=3
+    local attempt=1
+    while [ $attempt -le $max_attempts ]; do
+        if balena exec ubuntu-piphi bash -c "$cmd"; then
+            return 0
+        fi
+        msg "waiting_container_progress" $((attempt*5))
+        sleep 5
+        attempt=$((attempt+1))
     done
     return 1
 }
@@ -309,55 +328,91 @@ EOL
         exit 1
     fi
 
-    # Configure inside the Ubuntu container
+    # Configure inside the Ubuntu container with retries
     msg "installing_deps"
-    balena exec ubuntu-piphi apt-get update || {
+    exec_with_retry "apt-get update" || {
         msg "deps_error"
         exit 1
     }
-    balena exec ubuntu-piphi apt-get install -y -o Dpkg::Options::="--force-confdef" -o Dpkg::Options::="--force-confold" ca-certificates curl gnupg lsb-release usbutils gpsd gpsd-clients iputils-ping || {
+    exec_with_retry "apt-get install -y -o Dpkg::Options::=\"--force-confdef\" -o Dpkg::Options::=\"--force-confold\" ca-certificates curl gnupg lsb-release usbutils gpsd gpsd-clients iputils-ping" || {
         msg "deps_error"
         exit 1
     }
 
     msg "installing_yq"
-    balena exec ubuntu-piphi bash -c 'curl -L https://github.com/mikefarah/yq/releases/download/v4.44.3/yq_linux_arm64 -o /usr/bin/yq && chmod +x /usr/bin/yq' || {
+    exec_with_retry "curl -L https://github.com/mikefarah/yq/releases/download/v4.44.3/yq_linux_arm64 -o /usr/bin/yq && chmod +x /usr/bin/yq" || {
         msg "yq_error"
         exit 1
     }
 
     msg "configuring_repo"
-    balena exec ubuntu-piphi mkdir -p /etc/apt/keyrings
-    balena exec ubuntu-piphi bash -c 'rm -f /etc/apt/sources.list.d/docker.list'
-    balena exec ubuntu-piphi bash -c 'curl -fsSL https://download.docker.com/linux/ubuntu/gpg | gpg --dearmor -o /etc/apt/keyrings/docker.gpg'
-    balena exec ubuntu-piphi bash -c 'echo "deb [arch=arm64 signed-by=/etc/apt/keyrings/docker.gpg] https://download.docker.com/linux/ubuntu focal stable" > /etc/apt/sources.list.d/docker.list'
-    balena exec ubuntu-piphi apt-get update || {
+    exec_with_retry "mkdir -p /etc/apt/keyrings" || {
+        msg "repo_error"
+        exit 1
+    }
+    exec_with_retry "rm -f /etc/apt/sources.list.d/docker.list" || {
+        msg "repo_error"
+        exit 1
+    }
+    exec_with_retry "curl -fsSL https://download.docker.com/linux/ubuntu/gpg | gpg --dearmor -o /etc/apt/keyrings/docker.gpg" || {
+        msg "repo_error"
+        exit 1
+    }
+    exec_with_retry "echo \"deb [arch=arm64 signed-by=/etc/apt/keyrings/docker.gpg] https://download.docker.com/linux/ubuntu focal stable\" > /etc/apt/sources.list.d/docker.list" || {
+        msg "repo_error"
+        exit 1
+    }
+    exec_with_retry "apt-get update" || {
         msg "repo_error"
         exit 1
     }
 
     msg "installing_docker"
-    balena exec ubuntu-piphi apt-get install -y -o Dpkg::Options::="--force-confdef" -o Dpkg::Options::="--force-confold" docker-ce docker-ce-cli containerd.io docker-compose-plugin || {
+    exec_with_retry "apt-get install -y -o Dpkg::Options::=\"--force-confdef\" -o Dpkg::Options::=\"--force-confold\" docker-ce docker-ce-cli containerd.io docker-compose-plugin" || {
         msg "docker_error"
         exit 1
     }
 
     # Create startup script for Docker daemon and services
     msg "configuring_daemon"
-    balena exec ubuntu-piphi bash -c 'echo "#!/bin/bash" > /usr/local/bin/start-docker.sh'
-    balena exec ubuntu-piphi bash -c 'echo "nohup dockerd --host=unix:///var/run/docker.sock --storage-driver=vfs > /piphi-network/dockerd.log 2>&1 &" >> /usr/local/bin/start-docker.sh'
-    balena exec ubuntu-piphi bash -c 'echo "sleep 10" >> /usr/local/bin/start-docker.sh'
-    balena exec ubuntu-piphi bash -c 'echo "cd /piphi-network && docker compose pull" >> /usr/local/bin/start-docker.sh'
-    balena exec ubuntu-piphi bash -c 'echo "sleep 5" >> /usr/local/bin/start-docker.sh'
-    balena exec ubuntu-piphi bash -c 'echo "cd /piphi-network && docker compose up -d" >> /usr/local/bin/start-docker.sh'
-    balena exec ubuntu-piphi bash -c 'chmod +x /usr/local/bin/start-docker.sh'
+    exec_with_retry "echo '#!/bin/bash' > /usr/local/bin/start-docker.sh" || {
+        msg "run_error"
+        exit 1
+    }
+    exec_with_retry "echo 'nohup dockerd --host=unix:///var/run/docker.sock --storage-driver=vfs > /piphi-network/dockerd.log 2>&1 &' >> /usr/local/bin/start-docker.sh" || {
+        msg "run_error"
+        exit 1
+    }
+    exec_with_retry "echo 'sleep 10' >> /usr/local/bin/start-docker.sh" || {
+        msg "run_error"
+        exit 1
+    }
+    exec_with_retry "echo 'cd /piphi-network && docker compose pull' >> /usr/local/bin/start-docker.sh" || {
+        msg "run_error"
+        exit 1
+    }
+    exec_with_retry "echo 'sleep 5' >> /usr/local/bin/start-docker.sh" || {
+        msg "run_error"
+        exit 1
+    }
+    exec_with_retry "echo 'cd /piphi-network && docker compose up -d' >> /usr/local/bin/start-docker.sh" || {
+        msg "run_error"
+        exit 1
+    }
+    exec_with_retry "chmod +x /usr/local/bin/start-docker.sh" || {
+        msg "run_error"
+        exit 1
+    }
 
     # Start Docker daemon
     msg "starting_daemon"
-    balena exec ubuntu-piphi /usr/local/bin/start-docker.sh
+    exec_with_retry "/usr/local/bin/start-docker.sh" || {
+        msg "daemon_error"
+        exit 1
+    }
     msg "waiting_daemon"
     for i in {1..6}; do
-        if balena exec ubuntu-piphi bash -c "docker info" > /dev/null 2>&1; then
+        if exec_with_retry "docker info" > /dev/null 2>&1; then
             msg "daemon_success"
             break
         fi
@@ -374,13 +429,22 @@ EOL
     msg "starting_services"
     for attempt in {1..3}; do
         msg "attempt_services" $attempt 3
-        if balena exec ubuntu-piphi bash -c "cd /piphi-network && docker compose pull && docker compose up -d"; then
+        if exec_with_retry "cd /piphi-network && docker compose pull && docker compose up -d"; then
             msg "services_success"
             break
         else
             msg "checking_network"
-            balena exec ubuntu-piphi bash -c "echo 'nameserver 8.8.8.8' > /etc/resolv.conf"
-            if balena exec ubuntu-piphi curl -I https://registry-1.docker.io/v2/ >/dev/null 2>&1; then
+            exec_with_retry "echo 'nameserver 8.8.8.8' > /etc/resolv.conf" || {
+                msg "network_error"
+                sleep 10
+                if [ $attempt -eq 3 ]; then
+                    msg "services_failed"
+                    msg "services_logs"
+                    exit 1
+                fi
+                continue
+            }
+            if exec_with_retry "curl -I https://registry-1.docker.io/v2/" > /dev/null 2>&1; then
                 continue
             else
                 msg "network_error"
@@ -397,7 +461,7 @@ EOL
     # Wait for PiPhi panel availability
     msg "waiting_piphi"
     for i in {1..12}; do
-        if balena exec ubuntu-piphi bash -c "nc -z 127.0.0.1 31415" 2>/dev/null; then
+        if exec_with_retry "nc -z 127.0.0.1 31415" 2>/dev/null; then
             msg "piphi_success"
             break
         fi
@@ -416,10 +480,10 @@ EOL
     # Verification
     msg "verifying_install"
     balena ps
-    balena exec ubuntu-piphi docker compose ps
+    exec_with_retry "docker compose ps"
 
     # Verify GPS (optional check)
-    if balena exec ubuntu-piphi bash -c "cgps -s" 2>/dev/null; then
+    if exec_with_retry "cgps -s" 2>/dev/null; then
         if [ "$LANGUAGE" = "pl" ]; then
             echo -e "GPS działa poprawnie."
         else
@@ -446,14 +510,14 @@ echo -e ""
 msg "separator"
 if [ "$LANGUAGE" = "pl" ]; then
     echo -e "Skrypt instalacyjny PiPhi Network na SenseCAP M1 z balenaOS"
-    echo -e "Wersja: 2.12 | Data: 02 września 2025, 20:30 CEST"
+    echo -e "Wersja: 2.13 | Data: 02 września 2025, 20:45 CEST"
     echo -e "================================================================"
     echo -e "1 - Instalacja PiPhi Network z obsługą GPS i automatycznym startem"
     echo -e "2 - Wyjście"
     echo -e "3 - Zmień na język Angielski"
 else
     echo -e "PiPhi Network Installation Script for SenseCAP M1 with balenaOS"
-    echo -e "Version: 2.12 | Date: September 02, 2025, 08:30 PM CEST"
+    echo -e "Version: 2.13 | Date: September 02, 2025, 08:45 PM CEST"
     echo -e "================================================================"
     echo -e "1 - Install PiPhi Network with GPS support and automatic startup"
     echo -e "2 - Exit"
