@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # Skrypt instalacyjny PiPhi Network na SenseCAP M1 z balenaOS
-# Wersja: 2.6
+# Wersja: 2.7
 # Autor: hattimon (z pomocą Grok, xAI)
 # Data: September 02, 2025
 # Opis: Instaluje PiPhi Network obok Helium Miner, z obsługą GPS dongle (U-Blox 7).
@@ -78,9 +78,9 @@ EOL
     echo -e "Pobieranie obrazu Ubuntu..."
     balena pull ubuntu:20.04 || { echo -e "Błąd pobierania obrazu Ubuntu"; exit 1; }
     
-    # Uruchom kontener Ubuntu z ograniczeniem zasobów
+    # Uruchom kontener Ubuntu z odpowiednimi zasobami
     echo -e "Uruchamianie kontenera Ubuntu z PiPhi..."
-    balena run -d --privileged -v /mnt/data/piphi-network:/piphi-network -p 31415:31415 -p 5432:5432 -p 3000:3000 --cpus="0.5" --memory="1g" --name ubuntu-piphi --restart unless-stopped ubuntu:20.04 tail -f /dev/null
+    balena run -d --privileged -v /mnt/data/piphi-network:/piphi-network -p 31415:31415 -p 5432:5432 -p 3000:3000 --cpus="2.0" --memory="2g" --name ubuntu-piphi --restart unless-stopped ubuntu:20.04 tail -f /dev/null
     
     # Poczekaj, aż kontener będzie w pełni uruchomiony
     echo -e "Czekanie na uruchomienie kontenera Ubuntu (5 sekund)..."
@@ -171,7 +171,7 @@ EOL
 echo -e ""
 echo -e "================================================================"
 echo -e "Skrypt instalacyjny PiPhi Network na SenseCAP M1 z balenaOS"
-echo -e "Wersja: 2.6 | Data: September 02, 2025"
+echo -e "Wersja: 2.7 | Data: September 02, 2025"
 echo -e "================================================================"
 echo -e "1 - Instalacja PiPhi Network z obsługą GPS"
 echo -e "2 - Wyjście"
