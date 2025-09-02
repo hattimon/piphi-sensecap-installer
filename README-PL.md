@@ -170,6 +170,6 @@ Po wykonaniu skryptu prześlij wyniki następujących komend, aby potwierdzić p
   balena exec -it ubuntu-piphi cgps -s
   ```
 
-## Support My Work
-If you find this script helpful, consider supporting the project:
+## Wesprzyj moją pracę
+Jeśli uważasz, że ten skrypt jest pomocny, rozważ wsparcie projektu:
 [![ko-fi](https://ko-fi.com/img/githubbutton_sm.svg)](https://ko-fi.com/B0B01KMW5G)
