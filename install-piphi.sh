@@ -1,15 +1,15 @@
 #!/bin/bash
 
 # Skrypt instalacyjny PiPhi Network na SenseCAP M1 z balenaOS
-# Wersja: 2.11
+# Wersja: 2.12
 # Autor: hattimon (z pomocą Grok, xAI)
 # Data: September 02, 2025
-# Opis: Instaluje PiPhi Network obok Helium Miner, z obsługą GPS dongle (U-Blox 7).
+# Opis: Instaluje PiPhi Network obok Helium Miner, z obsługą GPS dongle (U-Blox 7) i automatycznym startem po restarcie.
 # Wymagania: balenaOS (testowane na 2.80.3+rev1), GPS dongle USB, dostęp SSH jako root.
 
 # Funkcja instalacji
 function install() {
-    echo -e "Module: Instalacja PiPhi Network z obsługą GPS"
+    echo -e "Module: Instalacja PiPhi Network z obsługą GPS i automatycznym startem"
     echo -e "================================================================"
     
     # Sprawdź dostępność wget
@@ -52,6 +52,7 @@ function install() {
     if ! grep -q "services:" docker-compose.yml || ! grep -q "software:" docker-compose.yml; then
         echo -e "Pobrany plik docker-compose.yml jest nieprawidłowy lub nie zawiera usługi 'software'. Używanie domyślnego pliku."
         cat > docker-compose.yml << EOL
+version: '3.3'
 services:
   db:
     container_name: db
@@ -84,7 +85,7 @@ services:
     devices:
       - "/dev/ttyACM0:/dev/ttyACM0"
     environment:
-      - GPS_DEVICE=/dev/ttyACM0
+      - "GPS_DEVICE=/dev/ttyACM0"
     labels:
       - "com.centurylinklabs.watchtower.enable=true"
     network_mode: host
@@ -127,9 +128,9 @@ EOL
     echo -e "Pobieranie obrazu Ubuntu..."
     balena pull ubuntu:20.04 || { echo -e "Błąd pobierania obrazu Ubuntu"; exit 1; }
     
-    # Uruchom kontener Ubuntu z odpowiednimi zasobami
+    # Uruchom kontener Ubuntu z odpowiednimi zasobami i automatycznym restartem
     echo -e "Uruchamianie kontenera Ubuntu z PiPhi..."
-    balena run -d --privileged -v /mnt/data/piphi-network:/piphi-network -p 31415:31415 -p 5432:5432 -p 3000:3000 --cpus="2.0" --memory="2g" --name ubuntu-piphi --restart unless-stopped ubuntu:20.04 tail -f /dev/null || { echo -e "Błąd uruchamiania kontenera Ubuntu"; exit 1; }
+    balena run -d --privileged -v /mnt/data/piphi-network:/piphi-network -p 31415:31415 -p 5432:5432 -p 3000:3000 --cpus="2.0" --memory="2g" --name ubuntu-piphi --restart unless-stopped ubuntu:20.04 /bin/bash -c "while true; do sleep 3600; done" || { echo -e "Błąd uruchamiania kontenera Ubuntu"; exit 1; }
     
     # Poczekaj, aż kontener będzie w pełni uruchomiony
     echo -e "Czekanie na uruchomienie kontenera Ubuntu (5 sekund)..."
@@ -153,6 +154,7 @@ EOL
     
     echo -e "Konfiguracja repozytorium Dockera..."
     balena exec ubuntu-piphi mkdir -p /etc/apt/keyrings
+    balena exec ubuntu-piphi bash -c 'rm -f /etc/apt/sources.list.d/docker.list'
     balena exec ubuntu-piphi bash -c 'curl -fsSL https://download.docker.com/linux/ubuntu/gpg | gpg --dearmor -o /etc/apt/keyrings/docker.gpg'
     balena exec ubuntu-piphi bash -c 'echo "deb [arch=arm64 signed-by=/etc/apt/keyrings/docker.gpg] https://download.docker.com/linux/ubuntu focal stable" > /etc/apt/sources.list.d/docker.list'
     balena exec ubuntu-piphi apt-get update || { echo -e "Błąd aktualizacji po dodaniu repozytorium Dockera"; exit 1; }
@@ -160,8 +162,15 @@ EOL
     echo -e "Instalacja Dockera i docker-compose..."
     balena exec ubuntu-piphi apt-get install -y -o Dpkg::Options::="--force-confdef" -o Dpkg::Options::="--force-confold" docker-ce docker-ce-cli containerd.io docker-compose-plugin || { echo -e "Błąd instalacji Dockera"; exit 1; }
     
+    # Utwórz skrypt startowy dla daemona Dockera
+    echo -e "Konfiguracja automatycznego startu daemona Dockera..."
+    balena exec ubuntu-piphi bash -c 'echo "#!/bin/bash" > /usr/local/bin/start-docker.sh'
+    balena exec ubuntu-piphi bash -c 'echo "nohup dockerd --host=unix:///var/run/docker.sock --storage-driver=vfs > /piphi-network/dockerd.log 2>&1 &" >> /usr/local/bin/start-docker.sh'
+    balena exec ubuntu-piphi bash -c 'chmod +x /usr/local/bin/start-docker.sh'
+    
+    # Uruchom daemon Dockera
     echo -e "Uruchamianie daemona Dockera..."
-    balena exec ubuntu-piphi bash -c "nohup dockerd --host=unix:///var/run/docker.sock --storage-driver=vfs > /piphi-network/dockerd.log 2>&1 &" || { echo -e "Błąd uruchamiania daemona Dockera"; exit 1; }
+    balena exec ubuntu-piphi /usr/local/bin/start-docker.sh
     echo -e "Czekanie na uruchomienie daemona Dockera (maks. 30 sekund)..."
     for i in {1..6}; do
         if balena exec ubuntu-piphi bash -c "docker info" > /dev/null 2>&1; then
@@ -177,41 +186,31 @@ EOL
         fi
     done
     
-    echo -e "Modyfikacja docker-compose.yml dla obsługi GPS..."
-    balena exec ubuntu-piphi bash -c "cd /piphi-network && yq e 'del(.version)' -i docker-compose.yml && yq e '.services.software.devices += [\"/dev/ttyACM0:/dev/ttyACM0\"] | .services.software.environment += [\"GPS_DEVICE=/dev/ttyACM0\"]' -i docker-compose.yml" || { echo -e "Błąd modyfikacji docker-compose.yml"; exit 1; }
-    
-    echo -e "Naprawa konfiguracji wolumenu dla Grafana..."
-    balena exec ubuntu-piphi bash -c "cd /piphi-network && yq e '.services.grafana.volumes = [\"grafana:/var/lib/grafana\"] | .volumes += {\"grafana\": {\"driver\": \"local\"}}' -i docker-compose.yml" || { echo -e "Błąd naprawy wolumenu Grafana"; exit 1; }
-    
-    echo -e "Konfiguracja GPS w Ubuntu..."
-    balena exec ubuntu-piphi gpsd /dev/ttyACM0 || { echo -e "Błąd uruchamiania gpsd"; exit 1; }
-    
-    echo -e "Weryfikacja pliku docker-compose.yml..."
-    balena exec ubuntu-piphi bash -c "cd /piphi-network && docker compose config" || { echo -e "Błąd walidacji docker-compose.yml"; exit 1; }
-    
-    echo -e "Sprawdzanie połączenia sieciowego..."
-    balena exec ubuntu-piphi curl -I https://registry-1.docker.io/v2/ || { echo -e "Błąd połączenia z Docker Hub. Sprawdź sieć i spróbuj ponownie."; exit 1; }
-    
+    # Uruchom usługi PiPhi
     echo -e "Uruchamianie usług PiPhi..."
+    balena exec ubuntu-piphi bash -c "cd /piphi-network && docker compose pull"
     for attempt in {1..3}; do
-        echo -e "Próba pobierania obrazów ($attempt/3)..."
-        if balena exec ubuntu-piphi bash -c "cd /piphi-network && docker compose pull && docker compose up -d"; then
+        echo -e "Próba uruchamiania usług ($attempt/3)..."
+        if balena exec ubuntu-piphi bash -c "cd /piphi-network && docker compose up -d"; then
             echo -e "Usługi PiPhi uruchomione poprawnie."
             break
         else
-            echo -e "Błąd podczas pobierania obrazów. Czekanie 10 sekund przed kolejną próbą..."
+            echo -e "Błąd podczas uruchamiania usług. Czekanie 10 sekund przed kolejną próbą..."
             sleep 10
             if [ $attempt -eq 3 ]; then
-                echo -e "Błąd: Nie udało się pobrać obrazów po 3 próbach."
-                echo -e "Sprawdź połączenie sieciowe: balena exec ubuntu-piphi curl -I https://registry-1.docker.io/v2/"
-                echo -e "Spróbuj ręcznie: balena exec -it ubuntu-piphi /bin/bash, cd /piphi-network, docker compose pull, docker compose up -d"
+                echo -e "Błąd: Nie udało się uruchomić usług po 3 próbach."
+                echo -e "Sprawdź logi: balena exec ubuntu-piphi docker logs piphi-network-image"
                 exit 1
             fi
         fi
     done
     
-    # Restartuj kontenery
-    echo -e "Restartowanie kontenerów..."
+    # Sprawdź połączenie sieciowe
+    echo -e "Sprawdzanie połączenia sieciowego..."
+    balena exec ubuntu-piphi curl -I https://registry-1.docker.io/v2/ || { echo -e "Błąd połączenia z Docker Hub. Sprawdź sieć i spróbuj ponownie."; exit 1; }
+    
+    # Restartuj kontener dla zastosowania zmian
+    echo -e "Restartowanie kontenera ubuntu-piphi..."
     balena restart ubuntu-piphi
     
     # Weryfikacja
@@ -231,9 +230,9 @@ EOL
 echo -e ""
 echo -e "================================================================"
 echo -e "Skrypt instalacyjny PiPhi Network na SenseCAP M1 z balenaOS"
-echo -e "Wersja: 2.11 | Data: September 02, 2025"
+echo -e "Wersja: 2.12 | Data: September 02, 2025"
 echo -e "================================================================"
-echo -e "1 - Instalacja PiPhi Network z obsługą GPS"
+echo -e "1 - Instalacja PiPhi Network z obsługą GPS i automatycznym startem"
 echo -e "2 - Wyjście"
 echo -e "================================================================"
 read -rp "Wybierz opcję i naciśnij ENTER: "
