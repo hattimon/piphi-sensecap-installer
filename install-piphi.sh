@@ -1,9 +1,9 @@
 #!/bin/bash
 
 # PiPhi Network Installation Script for SenseCAP M1 with balenaOS
-# Version: 2.21
+# Version: 2.22
 # Author: hattimon (with assistance from Grok, xAI)
-# Date: September 02, 2025, 11:05 PM CEST
+# Date: September 02, 2025, 11:45 PM CEST
 # Description: Installs PiPhi Network alongside Helium Miner, with GPS dongle (U-Blox 7) support and automatic startup on reboot, ensuring PiPhi panel availability and Docker daemon auto-restart.
 # Requirements: balenaOS (tested on 2.80.3+rev1), USB GPS dongle, SSH access as root.
 
@@ -243,7 +243,7 @@ function install() {
     msg "removing_old"
     balena stop ubuntu-piphi 2>/dev/null || true
     balena rm ubuntu-piphi 2>/dev/null || true
-    rm -rf /mnt/data/piphi-network/* 2>/dev/null || true
+    rm -rf /mnt/data/piphi-network/docker-compose.yml /mnt/data/piphi-network/dockerd.log 2>/dev/null || true
 
     # Download docker-compose.yml from PiPhi link (on host)
     msg "downloading_compose"
@@ -324,6 +324,38 @@ EOL
     else
         sed -i '/^version:/d' docker-compose.yml
     fi
+
+    # Create startup script on host before running container
+    msg "configuring_daemon"
+    cat > /mnt/data/piphi-network/start-docker.sh << 'EOL'
+#!/bin/bash
+echo "[$(date)] Starting start-docker.sh" >> /piphi-network/dockerd.log
+while true; do
+    if ! pgrep dockerd > /dev/null; then
+        echo "[$(date)] Starting dockerd..." >> /piphi-network/dockerd.log
+        nohup dockerd --host=unix:///var/run/docker.sock --storage-driver=vfs >> /piphi-network/dockerd.log 2>&1 &
+        sleep 10
+    fi
+    if [ -e /dev/ttyACM0 ]; then
+        echo "[$(date)] Starting gpsd..." >> /piphi-network/dockerd.log
+        gpsd /dev/ttyACM0 >> /piphi-network/dockerd.log 2>&1
+        sleep 5
+    else
+        echo "[$(date)] GPS device /dev/ttyACM0 not found" >> /piphi-network/dockerd.log
+    fi
+    echo "[$(date)] Pulling Docker images..." >> /piphi-network/dockerd.log
+    cd /piphi-network && docker compose pull >> /piphi-network/dockerd.log 2>&1
+    sleep 5
+    echo "[$(date)] Starting PiPhi services..." >> /piphi-network/dockerd.log
+    cd /piphi-network && docker compose up -d >> /piphi-network/dockerd.log 2>&1
+    echo "[$(date)] Services started, monitoring dockerd..." >> /piphi-network/dockerd.log
+    sleep 60
+done
+EOL
+    chmod +x /mnt/data/piphi-network/start-docker.sh || {
+        msg "run_error"
+        exit 1
+    }
 
     # Check network connectivity before pulling image (on host)
     msg "checking_network"
@@ -458,43 +490,6 @@ EOL
         exit 1
     }
 
-    # Create startup script for Docker daemon and services with auto-restart (in container)
-    msg "configuring_daemon"
-    exec_with_retry "cat > /piphi-network/start-docker.sh << 'EOL'
-#!/bin/bash
-echo \"[$(date)] Starting start-docker.sh\" >> /piphi-network/dockerd.log
-while true; do
-    if ! pgrep dockerd > /dev/null; then
-        echo \"[$(date)] Starting dockerd...\" >> /piphi-network/dockerd.log
-        nohup dockerd --host=unix:///var/run/docker.sock --storage-driver=vfs >> /piphi-network/dockerd.log 2>&1 &
-        sleep 10
-    fi
-    if [ -e /dev/ttyACM0 ]; then
-        echo \"[$(date)] Starting gpsd...\" >> /piphi-network/dockerd.log
-        gpsd /dev/ttyACM0 >> /piphi-network/dockerd.log 2>&1
-        sleep 5
-    else
-        echo \"[$(date)] GPS device /dev/ttyACM0 not found\" >> /piphi-network/dockerd.log
-    fi
-    echo \"[$(date)] Pulling Docker images...\" >> /piphi-network/dockerd.log
-    cd /piphi-network && docker compose pull >> /piphi-network/dockerd.log 2>&1
-    sleep 5
-    echo \"[$(date)] Starting PiPhi services...\" >> /piphi-network/dockerd.log
-    cd /piphi-network && docker compose up -d >> /piphi-network/dockerd.log 2>&1
-    echo \"[$(date)] Services started, monitoring dockerd...\" >> /piphi-network/dockerd.log
-    sleep 60
-done
-EOL" || {
-        msg "run_error"
-        balena logs ubuntu-piphi
-        exit 1
-    }
-    exec_with_retry "chmod +x /piphi-network/start-docker.sh" || {
-        msg "run_error"
-        balena logs ubuntu-piphi
-        exit 1
-    }
-
     # Start Docker daemon
     msg "starting_daemon"
     exec_with_retry "/piphi-network/start-docker.sh" || {
@@ -607,14 +602,14 @@ echo -e ""
 msg "separator"
 if [ "$LANGUAGE" = "pl" ]; then
     echo -e "Skrypt instalacyjny PiPhi Network na SenseCAP M1 z balenaOS"
-    echo -e "Wersja: 2.21 | Data: 02 września 2025, 23:05 CEST"
+    echo -e "Wersja: 2.22 | Data: 02 września 2025, 23:45 CEST"
     echo -e "================================================================"
     echo -e "1 - Instalacja PiPhi Network z obsługą GPS i automatycznym startem"
     echo -e "2 - Wyjście"
     echo -e "3 - Zmień na język Angielski"
 else
     echo -e "PiPhi Network Installation Script for SenseCAP M1 with balenaOS"
-    echo -e "Version: 2.21 | Date: September 02, 2025, 11:05 PM CEST"
+    echo -e "Version: 2.22 | Date: September 02, 2025, 11:45 PM CEST"
     echo -e "================================================================"
     echo -e "1 - Install PiPhi Network with GPS support and automatic startup"
     echo -e "2 - Exit"
