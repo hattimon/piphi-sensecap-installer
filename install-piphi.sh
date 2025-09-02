@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # PiPhi Network Installation Script for SenseCAP M1 with balenaOS
-# Version: 2.17
+# Version: 2.18
 # Author: hattimon (with assistance from Grok, xAI)
 # Date: September 02, 2025, 09:30 PM CEST
 # Description: Installs PiPhi Network alongside Helium Miner, with GPS dongle (U-Blox 7) support and automatic startup on reboot, ensuring PiPhi panel availability.
@@ -363,14 +363,24 @@ EOL
         exit 1
     }
 
-    # Configure inside the Ubuntu container with retries
+    # Preconfigure tzdata to avoid interactive prompts
     msg "installing_deps"
-    exec_with_retry "apt-get update" || {
+    exec_with_retry "echo 'tzdata tzdata/Areas select Europe' | debconf-set-selections" || {
         msg "deps_error"
         balena logs ubuntu-piphi
         exit 1
     }
-    exec_with_retry "apt-get install -y -o Dpkg::Options::=\"--force-confdef\" -o Dpkg::Options::=\"--force-confold\" ca-certificates curl gnupg lsb-release usbutils gpsd gpsd-clients iputils-ping" || {
+    exec_with_retry "echo 'tzdata tzdata/Zones/Europe select Warsaw' | debconf-set-selections" || {
+        msg "deps_error"
+        balena logs ubuntu-piphi
+        exit 1
+    }
+    exec_with_retry "export DEBIAN_FRONTEND=noninteractive && apt-get update" || {
+        msg "deps_error"
+        balena logs ubuntu-piphi
+        exit 1
+    }
+    exec_with_retry "export DEBIAN_FRONTEND=noninteractive && apt-get install -y -o Dpkg::Options::=\"--force-confdef\" -o Dpkg::Options::=\"--force-confold\" ca-certificates curl gnupg lsb-release usbutils gpsd gpsd-clients iputils-ping tzdata" || {
         msg "deps_error"
         balena logs ubuntu-piphi
         exit 1
@@ -404,14 +414,14 @@ EOL
         balena logs ubuntu-piphi
         exit 1
     }
-    exec_with_retry "apt-get update" || {
+    exec_with_retry "export DEBIAN_FRONTEND=noninteractive && apt-get update" || {
         msg "repo_error"
         balena logs ubuntu-piphi
         exit 1
     }
 
     msg "installing_docker"
-    exec_with_retry "apt-get install -y -o Dpkg::Options::=\"--force-confdef\" -o Dpkg::Options::=\"--force-confold\" docker-ce docker-ce-cli containerd.io docker-compose-plugin" || {
+    exec_with_retry "export DEBIAN_FRONTEND=noninteractive && apt-get install -y -o Dpkg::Options::=\"--force-confdef\" -o Dpkg::Options::=\"--force-confold\" docker-ce docker-ce-cli containerd.io docker-compose-plugin" || {
         msg "docker_error"
         balena logs ubuntu-piphi
         exit 1
@@ -549,14 +559,14 @@ echo -e ""
 msg "separator"
 if [ "$LANGUAGE" = "pl" ]; then
     echo -e "Skrypt instalacyjny PiPhi Network na SenseCAP M1 z balenaOS"
-    echo -e "Wersja: 2.17 | Data: 02 września 2025, 21:30 CEST"
+    echo -e "Wersja: 2.18 | Data: 02 września 2025, 21:30 CEST"
     echo -e "================================================================"
     echo -e "1 - Instalacja PiPhi Network z obsługą GPS i automatycznym startem"
     echo -e "2 - Wyjście"
     echo -e "3 - Zmień na język Angielski"
 else
     echo -e "PiPhi Network Installation Script for SenseCAP M1 with balenaOS"
-    echo -e "Version: 2.17 | Date: September 02, 2025, 09:30 PM CEST"
+    echo -e "Version: 2.18 | Date: September 02, 2025, 09:30 PM CEST"
     echo -e "================================================================"
     echo -e "1 - Install PiPhi Network with GPS support and automatic startup"
     echo -e "2 - Exit"
