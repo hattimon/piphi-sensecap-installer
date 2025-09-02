@@ -29,7 +29,7 @@ Oparte na dokumentacji PiPhi Network: [docs.piphi.network/Installation](https://
 ## Kroki instalacji
 1. **Sklonuj repozytorium**:
    ```
-   git clone https://github.com/twojuser/piphi-sensecap-installer.git
+   wget https://raw.githubusercontent.com/hattimon/piphi-sensecap-installer/main/install-piphi.sh
    cd piphi-sensecap-installer
    ```
 
