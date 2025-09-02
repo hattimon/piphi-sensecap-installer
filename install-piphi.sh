@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # Skrypt instalacyjny PiPhi Network na SenseCAP M1 z balenaOS
-# Wersja: 2.8
+# Wersja: 2.9
 # Autor: hattimon (z pomocą Grok, xAI)
 # Data: September 02, 2025
 # Opis: Instaluje PiPhi Network obok Helium Miner, z obsługą GPS dongle (U-Blox 7).
@@ -135,6 +135,9 @@ EOL
     balena exec ubuntu-piphi apt-get update || { echo -e "Błąd aktualizacji pakietów w Ubuntu"; exit 1; }
     balena exec ubuntu-piphi apt-get install -y ca-certificates curl gnupg lsb-release usbutils gpsd gpsd-clients iputils-ping || { echo -e "Błąd instalacji zależności"; exit 1; }
     
+    echo -e "Konfiguracja DNS w kontenerze..."
+    balena exec ubuntu-piphi bash -c "echo 'nameserver 8.8.8.8' > /etc/resolv.conf" || { echo -e "Błąd konfiguracji DNS"; exit 1; }
+    
     echo -e "Instalacja yq do modyfikacji YAML..."
     balena exec ubuntu-piphi bash -c 'curl -L https://github.com/mikefarah/yq/releases/download/v4.44.3/yq_linux_arm64 -o /usr/bin/yq && chmod +x /usr/bin/yq' || { echo -e "Błąd instalacji yq"; exit 1; }
     
@@ -167,7 +170,6 @@ EOL
     echo -e "Modyfikacja docker-compose.yml dla obsługi GPS..."
     balena exec ubuntu-piphi bash -c "cd /piphi-network && yq e 'del(.version)' -i docker-compose.yml && yq e '.services.software.devices += [\"/dev/ttyACM0:/dev/ttyACM0\"] | .services.software.environment += [\"GPS_DEVICE=/dev/ttyACM0\"]' -i docker-compose.yml" || { echo -e "Błąd modyfikacji docker-compose.yml"; exit 1; }
     
-    # Napraw wolumen dla Grafana
     echo -e "Naprawa konfiguracji wolumenu dla Grafana..."
     balena exec ubuntu-piphi bash -c "cd /piphi-network && yq e '.services.grafana.volumes = [\"grafana:/var/lib/grafana\"]' -i docker-compose.yml && yq e '.volumes += {\"grafana\": {\"driver\": \"local\"}}' -i docker-compose.yml" || { echo -e "Błąd naprawy wolumenu Grafana"; exit 1; }
     
@@ -178,7 +180,19 @@ EOL
     balena exec ubuntu-piphi bash -c "cd /piphi-network && docker compose config" || { echo -e "Błąd walidacji docker-compose.yml"; exit 1; }
     
     echo -e "Sprawdzanie połączenia sieciowego..."
-    balena exec ubuntu-piphi ping -c 3 registry-1.docker.io || { echo -e "Błąd połączenia z Docker Hub. Sprawdź sieć i spróbuj ponownie."; exit 1; }
+    echo -e "Próba ping do 8.8.8.8..."
+    if balena exec ubuntu-piphi ping -c 3 8.8.8.8; then
+        echo -e "Połączenie z 8.8.8.8 działa. Sprawdzanie Docker Hub..."
+        if balena exec ubuntu-piphi ping -c 3 registry-1.docker.io; then
+            echo -e "Połączenie z Docker Hub działa."
+        else
+            echo -e "Błąd połączenia z Docker Hub. Kontynuowanie z nadzieją na działanie DNS..."
+        fi
+    else
+        echo -e "Błąd połączenia z 8.8.8.8. Sprawdź sieć na hoście i w kontenerze."
+        echo -e "Spróbuj ręcznie: balena exec -it ubuntu-piphi /bin/bash, ping -c 3 8.8.8.8"
+        exit 1
+    fi
     
     echo -e "Uruchamianie usług PiPhi..."
     for attempt in {1..3}; do
@@ -219,7 +233,7 @@ EOL
 echo -e ""
 echo -e "================================================================"
 echo -e "Skrypt instalacyjny PiPhi Network na SenseCAP M1 z balenaOS"
-echo -e "Wersja: 2.8 | Data: September 02, 2025"
+echo -e "Wersja: 2.9 | Data: September 02, 2025"
 echo -e "================================================================"
 echo -e "1 - Instalacja PiPhi Network z obsługą GPS"
 echo -e "2 - Wyjście"
