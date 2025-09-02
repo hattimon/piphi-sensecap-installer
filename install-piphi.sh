@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # Skrypt instalacyjny PiPhi Network na SenseCAP M1 z balenaOS
-# Wersja: 2.3
+# Wersja: 2.4
 # Autor: hattimon (z pomocą Grok, xAI)
 # Data: September 02, 2025
 # Opis: Instaluje PiPhi Network obok Helium Miner, z obsługą GPS dongle (U-Blox 7).
@@ -46,6 +46,20 @@ function install() {
     # Pobierz docker-compose.yml z linku PiPhi
     echo -e "Pobieranie docker-compose.yml..."
     wget -O docker-compose.yml https://chibisafe.piphi.network/m2JmK11Z7tor.yml || { echo -e "Błąd pobierania docker-compose.yml"; exit 1; }
+    
+    # Weryfikacja poprawności docker-compose.yml
+    echo -e "Weryfikacja pobranego pliku docker-compose.yml..."
+    if ! grep -q "services:" docker-compose.yml || ! grep -q "piphi:" docker-compose.yml; then
+        echo -e "Pobrany plik docker-compose.yml jest nieprawidłowy lub nie zawiera usługi 'piphi'. Używanie domyślnego pliku."
+        cat > docker-compose.yml << EOL
+services:
+  piphi:
+    image: piphi/piphi:latest
+    restart: unless-stopped
+    ports:
+      - "31415:31415"
+EOL
+    fi
     
     # Pobierz obraz Ubuntu
     echo -e "Pobieranie obrazu Ubuntu..."
@@ -125,7 +139,7 @@ function install() {
 echo -e ""
 echo -e "================================================================"
 echo -e "Skrypt instalacyjny PiPhi Network na SenseCAP M1 z balenaOS"
-echo -e "Wersja: 2.3 | Data: September 02, 2025"
+echo -e "Wersja: 2.4 | Data: September 02, 2025"
 echo -e "================================================================"
 echo -e "1 - Instalacja PiPhi Network z obsługą GPS"
 echo -e "2 - Wyjście"
