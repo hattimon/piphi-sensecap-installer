@@ -1,4 +1,5 @@
 # PiPhi Network Installer for SenseCAP M1 with balenaOS
+[🇬🇧 English](README.md) | [🇵🇱 Polski](README-PL.md)
 
 ## Overview
 This repository provides a fully automated Bash script to install PiPhi Network on SenseCAP M1 devices running balenaOS, with support for a GPS dongle (tested with U-Blox 7). The installation runs PiPhi alongside the existing Helium Miner, using a Ubuntu container to handle Docker, GPS, and all services (PiPhi, PostgreSQL, Watchtower, Grafana). The script ensures automatic startup of the container and services after a system restart.
