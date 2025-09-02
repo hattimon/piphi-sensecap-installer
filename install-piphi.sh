@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # Skrypt instalacyjny PiPhi Network na SenseCAP M1 z balenaOS
-# Wersja: 2.10
+# Wersja: 2.11
 # Autor: hattimon (z pomocą Grok, xAI)
 # Data: September 02, 2025
 # Opis: Instaluje PiPhi Network obok Helium Miner, z obsługą GPS dongle (U-Blox 7).
@@ -118,6 +118,14 @@ volumes:
 EOL
     fi
     
+    # Sprawdź i usuń istniejący kontener ubuntu-piphi
+    echo -e "Sprawdzanie istniejącego kontenera ubuntu-piphi..."
+    if balena ps -a --format "{{.Names}}" | grep -q ubuntu-piphi; then
+        echo -e "Znaleziono istniejący kontener ubuntu-piphi. Usuwanie..."
+        balena stop ubuntu-piphi
+        balena rm ubuntu-piphi
+    fi
+    
     # Pobierz obraz Ubuntu
     echo -e "Pobieranie obrazu Ubuntu..."
     balena pull ubuntu:20.04 || { echo -e "Błąd pobierania obrazu Ubuntu"; exit 1; }
@@ -141,7 +149,7 @@ EOL
     # Konfiguracja w kontenerze Ubuntu
     echo -e "Instalacja zależności w Ubuntu..."
     balena exec ubuntu-piphi apt-get update || { echo -e "Błąd aktualizacji pakietów w Ubuntu"; exit 1; }
-    balena exec ubuntu-piphi apt-get install -y -o Dpkg::Options::="--force-confdef" -o Dpkg::Options::="--force-confold" ca-certificates curl gnupg lsb-release usbutils gpsd gpsd-clients iputils-ping docker-ce docker-ce-cli containerd.io docker-compose-plugin || { echo -e "Błąd instalacji zależności"; exit 1; }
+    balena exec ubuntu-piphi apt-get install -y -o Dpkg::Options::="--force-confdef" -o Dpkg::Options::="--force-confold" ca-certificates curl gnupg lsb-release usbutils gpsd gpsd-clients iputils-ping || { echo -e "Błąd instalacji podstawowych zależności"; exit 1; }
     
     echo -e "Instalacja yq do modyfikacji YAML..."
     balena exec ubuntu-piphi bash -c 'curl -L https://github.com/mikefarah/yq/releases/download/v4.44.3/yq_linux_arm64 -o /usr/bin/yq && chmod +x /usr/bin/yq' || { echo -e "Błąd instalacji yq"; exit 1; }
@@ -149,8 +157,11 @@ EOL
     echo -e "Konfiguracja repozytorium Dockera..."
     balena exec ubuntu-piphi mkdir -p /etc/apt/keyrings
     balena exec ubuntu-piphi bash -c 'curl -fsSL https://download.docker.com/linux/ubuntu/gpg | gpg --dearmor -o /etc/apt/keyrings/docker.gpg'
-    balena exec ubuntu-piphi bash -c 'echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.gpg] https://download.docker.com/linux/ubuntu focal stable" > /etc/apt/sources.list.d/docker.list'
+    balena exec ubuntu-piphi bash -c 'echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.gpg] https://download.docker.com/linux/ubuntu $(lsb_release -cs) stable" > /etc/apt/sources.list.d/docker.list'
     balena exec ubuntu-piphi apt-get update || { echo -e "Błąd aktualizacji po dodaniu repozytorium Dockera"; exit 1; }
+    
+    echo -e "Instalacja Dockera i docker-compose..."
+    balena exec ubuntu-piphi apt-get install -y -o Dpkg::Options::="--force-confdef" -o Dpkg::Options::="--force-confold" docker-ce docker-ce-cli containerd.io docker-compose-plugin || { echo -e "Błąd instalacji Dockera"; exit 1; }
     
     echo -e "Uruchamianie daemona Dockera..."
     balena exec ubuntu-piphi bash -c "nohup dockerd --host=unix:///var/run/docker.sock --storage-driver=vfs > /piphi-network/dockerd.log 2>&1 &" || { echo -e "Błąd uruchamiania daemona Dockera"; exit 1; }
@@ -223,7 +234,7 @@ EOL
 echo -e ""
 echo -e "================================================================"
 echo -e "Skrypt instalacyjny PiPhi Network na SenseCAP M1 z balenaOS"
-echo -e "Wersja: 2.10 | Data: September 02, 2025"
+echo -e "Wersja: 2.11 | Data: September 02, 2025"
 echo -e "================================================================"
 echo -e "1 - Instalacja PiPhi Network z obsługą GPS"
 echo -e "2 - Wyjście"
