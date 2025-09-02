@@ -106,4 +106,4 @@ MIT – używaj na własne ryzyko.
 
 ## Wsparcie
 Jeśli projekt jest pomocny, możesz postawić kawę:
-[![ko-fi](https://ko-fi.com/img/githubbutton_sm.svg)](https://ko-fi.com/your-kofi-link)
+[![ko-fi](https://ko-fi.com/img/githubbutton_sm.svg)](https://ko-fi.com/B0B01KMW5G)
