@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # Skrypt instalacyjny PiPhi Network na SenseCAP M1 z balenaOS
-# Wersja: 2.5
+# Wersja: 2.6
 # Autor: hattimon (z pomocą Grok, xAI)
 # Data: September 02, 2025
 # Opis: Instaluje PiPhi Network obok Helium Miner, z obsługą GPS dongle (U-Blox 7).
@@ -64,6 +64,10 @@ services:
     volumes:
       - /etc/localtime:/etc/localtime:ro
       - /var/run/dbus:/var/run/dbus
+    devices:
+      - "/dev/ttyACM0:/dev/ttyACM0"
+    environment:
+      - GPS_DEVICE=/dev/ttyACM0
     labels:
       - "com.centurylinklabs.watchtower.enable=true"
     network_mode: host
@@ -125,8 +129,26 @@ EOL
     echo -e "Weryfikacja pliku docker-compose.yml..."
     balena exec ubuntu-piphi bash -c "cd /piphi-network && docker compose config" || { echo -e "Błąd walidacji docker-compose.yml"; exit 1; }
     
+    echo -e "Sprawdzanie połączenia sieciowego..."
+    balena exec ubuntu-piphi ping -c 3 registry-1.docker.io || { echo -e "Błąd połączenia z Docker Hub. Sprawdź sieć i spróbuj ponownie."; exit 1; }
+    
     echo -e "Uruchamianie usług PiPhi..."
-    balena exec ubuntu-piphi bash -c "cd /piphi-network && docker compose pull && docker compose up -d" || { echo -e "Błąd uruchamiania PiPhi"; exit 1; }
+    for attempt in {1..3}; do
+        echo -e "Próba pobierania obrazów ($attempt/3)..."
+        if balena exec ubuntu-piphi bash -c "cd /piphi-network && docker compose pull && docker compose up -d"; then
+            echo -e "Usługi PiPhi uruchomione poprawnie."
+            break
+        else
+            echo -e "Błąd podczas pobierania obrazów. Czekanie 10 sekund przed kolejną próbą..."
+            sleep 10
+            if [ $attempt -eq 3 ]; then
+                echo -e "Błąd: Nie udało się pobrać obrazów po 3 próbach."
+                echo -e "Sprawdź połączenie sieciowe: balena exec ubuntu-piphi ping -c 3 registry-1.docker.io"
+                echo -e "Spróbuj ręcznie: balena exec -it ubuntu-piphi /bin/bash, cd /piphi-network, docker compose pull, docker compose up -d"
+                exit 1
+            fi
+        fi
+    done
     
     # Restartuj kontenery
     echo -e "Restartowanie kontenerów..."
@@ -138,6 +160,7 @@ EOL
     balena exec ubuntu-piphi docker compose ps
     
     echo -e "Instalacja zakończona! Dostęp do PiPhi: http://<IP urządzenia>:31415"
+    echo -e "Dostęp do Grafana: http://<IP urządzenia>:3000"
     echo -e "Sprawdź GPS w Ubuntu: balena exec -it ubuntu-piphi cgps -s"
     echo -e "Logi PiPhi: balena exec ubuntu-piphi docker logs piphi-network-image"
     echo -e "Logi Dockera: balena exec ubuntu-piphi cat /piphi-network/dockerd.log"
@@ -148,7 +171,7 @@ EOL
 echo -e ""
 echo -e "================================================================"
 echo -e "Skrypt instalacyjny PiPhi Network na SenseCAP M1 z balenaOS"
-echo -e "Wersja: 2.5 | Data: September 02, 2025"
+echo -e "Wersja: 2.6 | Data: September 02, 2025"
 echo -e "================================================================"
 echo -e "1 - Instalacja PiPhi Network z obsługą GPS"
 echo -e "2 - Wyjście"
