@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # Skrypt instalacyjny PiPhi Network na SenseCAP M1 z balenaOS
-# Wersja: 2.4
+# Wersja: 2.5
 # Autor: hattimon (z pomocą Grok, xAI)
 # Data: September 02, 2025
 # Opis: Instaluje PiPhi Network obok Helium Miner, z obsługą GPS dongle (U-Blox 7).
@@ -49,15 +49,24 @@ function install() {
     
     # Weryfikacja poprawności docker-compose.yml
     echo -e "Weryfikacja pobranego pliku docker-compose.yml..."
-    if ! grep -q "services:" docker-compose.yml || ! grep -q "piphi:" docker-compose.yml; then
-        echo -e "Pobrany plik docker-compose.yml jest nieprawidłowy lub nie zawiera usługi 'piphi'. Używanie domyślnego pliku."
+    if ! grep -q "services:" docker-compose.yml || ! grep -q "software:" docker-compose.yml; then
+        echo -e "Pobrany plik docker-compose.yml jest nieprawidłowy lub nie zawiera usługi 'software'. Używanie domyślnego pliku."
         cat > docker-compose.yml << EOL
 services:
-  piphi:
-    image: piphi/piphi:latest
-    restart: unless-stopped
+  software:
+    image: piphinetwork/team-piphi:latest
+    container_name: piphi-network-image
+    restart: on-failure
+    pull_policy: always
     ports:
       - "31415:31415"
+    privileged: true
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /var/run/dbus:/var/run/dbus
+    labels:
+      - "com.centurylinklabs.watchtower.enable=true"
+    network_mode: host
 EOL
     fi
     
@@ -67,7 +76,7 @@ EOL
     
     # Uruchom kontener Ubuntu z ograniczeniem zasobów
     echo -e "Uruchamianie kontenera Ubuntu z PiPhi..."
-    balena run -d --privileged -v /mnt/data/piphi-network:/piphi-network -p 31415:31415 --cpus="0.5" --memory="1g" --name ubuntu-piphi --restart unless-stopped ubuntu:20.04 tail -f /dev/null
+    balena run -d --privileged -v /mnt/data/piphi-network:/piphi-network -p 31415:31415 -p 5432:5432 -p 3000:3000 --cpus="0.5" --memory="1g" --name ubuntu-piphi --restart unless-stopped ubuntu:20.04 tail -f /dev/null
     
     # Poczekaj, aż kontener będzie w pełni uruchomiony
     echo -e "Czekanie na uruchomienie kontenera Ubuntu (5 sekund)..."
@@ -108,7 +117,7 @@ EOL
     done
     
     echo -e "Modyfikacja docker-compose.yml dla obsługi GPS..."
-    balena exec ubuntu-piphi bash -c "cd /piphi-network && yq e 'del(.version)' -i docker-compose.yml && yq e '.services.piphi.devices += [\"/dev/ttyACM0:/dev/ttyACM0\"] | .services.piphi.environment += [\"GPS_DEVICE=/dev/ttyACM0\"]' -i docker-compose.yml" || { echo -e "Błąd modyfikacji docker-compose.yml"; exit 1; }
+    balena exec ubuntu-piphi bash -c "cd /piphi-network && yq e 'del(.version)' -i docker-compose.yml && yq e '.services.software.devices += [\"/dev/ttyACM0:/dev/ttyACM0\"] | .services.software.environment += [\"GPS_DEVICE=/dev/ttyACM0\"]' -i docker-compose.yml" || { echo -e "Błąd modyfikacji docker-compose.yml"; exit 1; }
     
     echo -e "Konfiguracja GPS w Ubuntu..."
     balena exec ubuntu-piphi gpsd /dev/ttyACM0 || { echo -e "Błąd uruchamiania gpsd"; exit 1; }
@@ -130,7 +139,7 @@ EOL
     
     echo -e "Instalacja zakończona! Dostęp do PiPhi: http://<IP urządzenia>:31415"
     echo -e "Sprawdź GPS w Ubuntu: balena exec -it ubuntu-piphi cgps -s"
-    echo -e "Logi PiPhi: balena exec ubuntu-piphi docker logs <nazwa_kontenera_piphi>"
+    echo -e "Logi PiPhi: balena exec ubuntu-piphi docker logs piphi-network-image"
     echo -e "Logi Dockera: balena exec ubuntu-piphi cat /piphi-network/dockerd.log"
     echo -e "Uwaga: Umieść urządzenie na zewnątrz dla fix GPS (1–5 minut)."
 }
@@ -139,7 +148,7 @@ EOL
 echo -e ""
 echo -e "================================================================"
 echo -e "Skrypt instalacyjny PiPhi Network na SenseCAP M1 z balenaOS"
-echo -e "Wersja: 2.4 | Data: September 02, 2025"
+echo -e "Wersja: 2.5 | Data: September 02, 2025"
 echo -e "================================================================"
 echo -e "1 - Instalacja PiPhi Network z obsługą GPS"
 echo -e "2 - Wyjście"
