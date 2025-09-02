@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # Skrypt instalacyjny PiPhi Network na SenseCAP M1 z balenaOS
-# Wersja: 2.7
+# Wersja: 2.8
 # Autor: hattimon (z pomocą Grok, xAI)
 # Data: September 02, 2025
 # Opis: Instaluje PiPhi Network obok Helium Miner, z obsługą GPS dongle (U-Blox 7).
@@ -53,13 +53,30 @@ function install() {
         echo -e "Pobrany plik docker-compose.yml jest nieprawidłowy lub nie zawiera usługi 'software'. Używanie domyślnego pliku."
         cat > docker-compose.yml << EOL
 services:
+  db:
+    container_name: db
+    image: postgres:13.3
+    restart: always
+    environment:
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=piphi31415
+      - POSTGRES_DB=postgres
+      - POSTGRES_NAME=postgres
+    ports:
+      - "5432:5432"
+    volumes:
+      - db:/var/lib/postgresql/data
+      - /etc/localtime:/etc/localtime:ro
+    network_mode: host
   software:
-    image: piphinetwork/team-piphi:latest
     container_name: piphi-network-image
     restart: on-failure
     pull_policy: always
+    image: piphinetwork/team-piphi:latest
     ports:
       - "31415:31415"
+    depends_on:
+      - db
     privileged: true
     volumes:
       - /etc/localtime:/etc/localtime:ro
@@ -71,6 +88,33 @@ services:
     labels:
       - "com.centurylinklabs.watchtower.enable=true"
     network_mode: host
+  watchtower:
+    image: containrrr/watchtower
+    container_name: watchtower
+    restart: always
+    command: --interval 300
+    environment:
+      - WATCHTOWER_CLEANUP=true
+      - WATCHTOWER_LABEL_ENABLE=true
+      - WATCHTOWER_INCLUDE_RESTARTING=true
+    labels:
+      - "com.centurylinklabs.watchtower.enable=true"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+    network_mode: host
+  grafana:
+    container_name: grafana
+    image: grafana/grafana-oss
+    ports:
+      - "3000:3000"
+    volumes:
+      - grafana:/var/lib/grafana
+    restart: unless-stopped
+volumes:
+  db:
+    driver: local
+  grafana:
+    driver: local
 EOL
     fi
     
@@ -89,7 +133,7 @@ EOL
     # Konfiguracja w kontenerze Ubuntu
     echo -e "Instalacja zależności w Ubuntu..."
     balena exec ubuntu-piphi apt-get update || { echo -e "Błąd aktualizacji pakietów w Ubuntu"; exit 1; }
-    balena exec ubuntu-piphi apt-get install -y ca-certificates curl gnupg lsb-release usbutils gpsd gpsd-clients || { echo -e "Błąd instalacji zależności"; exit 1; }
+    balena exec ubuntu-piphi apt-get install -y ca-certificates curl gnupg lsb-release usbutils gpsd gpsd-clients iputils-ping || { echo -e "Błąd instalacji zależności"; exit 1; }
     
     echo -e "Instalacja yq do modyfikacji YAML..."
     balena exec ubuntu-piphi bash -c 'curl -L https://github.com/mikefarah/yq/releases/download/v4.44.3/yq_linux_arm64 -o /usr/bin/yq && chmod +x /usr/bin/yq' || { echo -e "Błąd instalacji yq"; exit 1; }
@@ -122,6 +166,10 @@ EOL
     
     echo -e "Modyfikacja docker-compose.yml dla obsługi GPS..."
     balena exec ubuntu-piphi bash -c "cd /piphi-network && yq e 'del(.version)' -i docker-compose.yml && yq e '.services.software.devices += [\"/dev/ttyACM0:/dev/ttyACM0\"] | .services.software.environment += [\"GPS_DEVICE=/dev/ttyACM0\"]' -i docker-compose.yml" || { echo -e "Błąd modyfikacji docker-compose.yml"; exit 1; }
+    
+    # Napraw wolumen dla Grafana
+    echo -e "Naprawa konfiguracji wolumenu dla Grafana..."
+    balena exec ubuntu-piphi bash -c "cd /piphi-network && yq e '.services.grafana.volumes = [\"grafana:/var/lib/grafana\"]' -i docker-compose.yml && yq e '.volumes += {\"grafana\": {\"driver\": \"local\"}}' -i docker-compose.yml" || { echo -e "Błąd naprawy wolumenu Grafana"; exit 1; }
     
     echo -e "Konfiguracja GPS w Ubuntu..."
     balena exec ubuntu-piphi gpsd /dev/ttyACM0 || { echo -e "Błąd uruchamiania gpsd"; exit 1; }
@@ -171,7 +219,7 @@ EOL
 echo -e ""
 echo -e "================================================================"
 echo -e "Skrypt instalacyjny PiPhi Network na SenseCAP M1 z balenaOS"
-echo -e "Wersja: 2.7 | Data: September 02, 2025"
+echo -e "Wersja: 2.8 | Data: September 02, 2025"
 echo -e "================================================================"
 echo -e "1 - Instalacja PiPhi Network z obsługą GPS"
 echo -e "2 - Wyjście"
