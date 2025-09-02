@@ -1,109 +1,175 @@
 # Instalator PiPhi Network dla SenseCAP M1 z balenaOS
 [🇬🇧 English](README.md) | [🇵🇱 Polski](README-PL.md)
 
+## Kluczowe zmiany w skrypcie (wersja 2.22)
+1. **Tworzenie `start-docker.sh` przed uruchomieniem kontenera**:
+   - Skrypt teraz tworzy `start-docker.sh` na hoście w `/mnt/data/piphi-network` przed uruchomieniem kontenera `ubuntu-piphi`, aby uniknąć błędu `no such file or directory`.
 
-## Przegląd
-To repozytorium zawiera w pełni zautomatyzowany skrypt Bash do instalacji PiPhi Network na urządzeniach SenseCAP M1 działających pod kontrolą balenaOS, z obsługą odbiornika GPS (przetestowano z U-Blox 7). Instalacja uruchamia PiPhi obok istniejącego Helium Minera, używając kontenera Ubuntu do obsługi Dockera, GPS i wszystkich usług (PiPhi, PostgreSQL, Watchtower, Grafana). Skrypt zapewnia automatyczny start kontenera i usług po restarcie systemu.
+2. **Ostrożne usuwanie plików**:
+   - Zamiast usuwać cały katalog `/mnt/data/piphi-network/*`, skrypt usuwa tylko `docker-compose.yml` i `dockerd.log`, zachowując `start-docker.sh` podczas reinstalacji.
 
-Na podstawie:
-- Dokumentacja PiPhi Network: [docs.piphi.network/Installation](https://docs.piphi.network/Installation)
-- docker-compose.yml: [chibisafe.piphi.network/m2JmK11Z7tor.yml](https://chibisafe.piphi.network/m2JmK11Z7tor.yml)
-- Inspiracja: [WantClue/Sensecap](https://github.com/WantClue/Sensecap)
+3. **Niezawodne uruchamianie GPS**:
+   - Potwierdzono, że `gpsd /dev/ttyACM0` jest uruchamiane automatycznie w `start-docker.sh` z weryfikacją urządzenia.
 
-**Przetestowano na**: balenaOS 2.80.3+rev1, SenseCAP M1 (Raspberry Pi 4, 4GB RAM, arm64), GPS U-Blox 7.
+4. **Logowanie**:
+   - `start-docker.sh` zawiera szczegółowe logi z sygnaturami czasowymi dla każdego kroku (start `dockerd`, `gpsd`, `docker compose pull`, `docker compose up`).
 
-**Główne funkcje**:
-- Równoległa praca z Helium Miner (np. kontenery `pktfwd_`, `miner_`).
-- Obsługa GPS przez moduł `cdc-acm` (host) i `gpsd` (kontener).
-- Wykorzystanie `/mnt/data` jako przestrzeni zapisu.
-- Automatyczna instalacja wszystkich zależności (`curl`, `iputils-ping`, `docker-ce`, `gpsd`, `yq`, itp.).
-- Niekonfigurowalne interakcyjnie ustawienie strefy czasowej (domyślnie: `Europe/Warsaw`, możliwość zmiany).
-- Mapowanie portów dla PiPhi (31415), PostgreSQL (5432) i Grafana (3000).
-- Automatyczne uruchamianie kontenera `ubuntu-piphi`, demona Dockera i wszystkich usług po restarcie.
-- Przydział zasobów (2 rdzenie CPU, 2GB RAM) dla stabilności.
-- Stała konfiguracja wolumenu Grafana i GPS.
-
-## Wymagania
-- SenseCAP M1 z balenaOS (dostęp przez SSH jako root).
-- Odbiornik GPS (U-Blox 7) podłączony do portu USB.
-- Stabilne połączenie sieciowe (pobieranie obrazów i plików).
-- Minimum 4GB RAM (standard dla SenseCAP M1).
-- Kopia zapasowa karty SD (instalacja modyfikuje system).
-
-**Ostrzeżenia**:
-- Może unieważnić gwarancję lub wpłynąć na wydajność Helium Mining.
-- Potencjalne konflikty zasobów (CPU/RAM); monitoruj `balena top`.
-- Brak oficjalnego wsparcia ze strony PiPhi lub SenseCAP – używasz na własne ryzyko.
-- GPS wymaga umieszczenia na zewnątrz w celu uzyskania sygnału satelitarnego (1–5 minut).
-- balenaOS nie zawiera `git`, `sudo`, ani `docker`; skrypt korzysta z `wget` i poleceń `balena`.
-- System plików root (`/`) jest tylko do odczytu; wszystkie pliki przechowywane w `/mnt/data`.
-- balenaOS może wyświetlać ostrzeżenie dotyczące limitów swap – można je zignorować przy 4GB RAM.
-- Docker w kontenerze korzysta ze sterownika `vfs` z powodu ograniczeń balenaOS.
-
-## Kroki instalacji automatycznej
-1. **Zaloguj się do SenseCAP M1**:
+## Instrukcje wdrożenia
+1. **Zatrzymaj i usuń istniejący kontener `ubuntu-piphi`** (na hoście):
    ```
-   ssh root@<adres_IP_urządzenia>
+   balena stop ubuntu-piphi
+   balena rm ubuntu-piphi
    ```
 
-2. **Przejdź do katalogu zapisu**:
+2. **Usuń stare pliki konfiguracyjne** (na hoście):
+   ```
+   cd /mnt/data/piphi-network
+   rm -f docker-compose.yml dockerd.log
+   ```
+   - Uwaga: Nie usuwamy `start-docker.sh`, ponieważ zostanie nadpisany przez nowy skrypt.
+
+3. **Usuń stary skrypt instalacyjny** (na hoście):
+   ```
+   rm /mnt/data/install-piphi.sh
+   ```
+
+4. **Pobierz zaktualizowany skrypt** (na hoście):
    ```
    cd /mnt/data
-   ```
-
-3. **Pobierz skrypt**:
-   ```
    wget https://raw.githubusercontent.com/hattimon/piphi-sensecap-installer/main/install-piphi.sh
    ```
-   Alternatywnie:
-   ```
-   curl -o install-piphi.sh https://raw.githubusercontent.com/hattimon/piphi-sensecap-installer/main/install-piphi.sh
-   ```
 
-4. **Nadaj uprawnienia do uruchomienia**:
+5. **Ustaw uprawnienia i uruchom** (na hoście):
    ```
    chmod +x install-piphi.sh
-   ```
-
-5. **Uruchom skrypt**:
-   ```
    ./install-piphi.sh
    ```
-   - Wybierz opcję 1, aby rozpocząć instalację automatyczną.
-   - Podaj strefę czasową (np. `Europe/Warsaw`) lub wciśnij ENTER, aby użyć domyślnej.
+   - Wybierz opcję 1, aby rozpocząć instalację.
+   - Opcjonalnie, wybierz opcję 3, aby zmienić język na polski.
 
-Skrypt:
-- Zweryfikuje kontenery Helium (`pktfwd_` itp.).
-- Załaduje moduł GPS (`cdc-acm`) na hoście.
-- Utworzy katalog `/mnt/data/piphi-network`.
-- Pobierze lub wygeneruje poprawny `docker-compose.yml` z GPS i Grafana.
-- Usunie istniejący kontener `ubuntu-piphi`, aby uniknąć konfliktów.
-- Uruchomi kontener Ubuntu w trybie `--privileged`, z limitami zasobów i restartem automatycznym.
-- Zainstaluje wszystkie zależności bez interakcji.
-- Skonfiguruje strefę czasową.
-- Uruchomi Dockera i usługi PiPhi (porty 31415, 5432, 3000).
+6. **Sprawdź panel PiPhi**:
+   - Otwórz przeglądarkę: `http://<IP urządzenia>:31415`.
+   - Sprawdź Grafana: `http://<IP urządzenia>:3000`.
 
-## Użytkowanie
-- **Dostęp do PiPhi**: `http://<IP_urządzenia>:31415`
-- **Dostęp do Grafana**: `http://<IP_urządzenia>:3000`
-- **GPS**: `cgps -s` w kontenerze `ubuntu-piphi`.
-- **Logi**: `docker logs <nazwa_kontenera>` w kontenerze Ubuntu.
+7. **Sprawdź GPS** (na hoście):
+   ```
+   balena exec -it ubuntu-piphi cgps -s
+   ```
+   - Jeśli GPS nie działa, upewnij się, że urządzenie jest na zewnątrz (fix może zająć 1–5 minut).
 
-## Rozwiązywanie problemów
-- Sprawdź działanie demona Dockera: `ps aux | grep dockerd`
-- Sprawdź GPS: `lsusb` (powinno pokazać `1546:01a7`).
-- Restart usług: `docker compose up -d`
+8. **Sprawdź status usług** (na hoście):
+   ```
+   balena ps -a
+   balena exec ubuntu-piphi docker compose ps
+   ```
 
-## Roadmap
-- [x] Obsługa Helium + PiPhi równolegle
-- [x] Stała konfiguracja Grafana
-- [x] Automatyczny start usług
-- [ ] Obsługa różnych odbiorników GPS
-- [ ] Instrukcja wideo
+9. **Sprawdź logi w razie błędu** (na hoście i w kontenerze):
+   - Logi kontenera:
+     ```
+     balena logs ubuntu-piphi
+     ```
+   - Logi apt-get:
+     ```
+     balena exec ubuntu-piphi cat /tmp/apt.log
+     ```
+   - Logi daemona Dockera i GPS:
+     ```
+     balena exec ubuntu-piphi cat /piphi-network/dockerd.log
+     ```
+   - Logi PiPhi:
+     ```
+     balena exec ubuntu-piphi docker logs piphi-network-image
+     ```
 
-## Licencja
-MIT – używaj na własne ryzyko.
+10. **Test restartu urządzenia** (na hoście):
+    ```
+    reboot
+    ```
+    - Po restarcie sprawdź status:
+      ```
+      balena ps -a
+      balena exec ubuntu-piphi docker compose ps
+      ```
+    - Sprawdź dostępność panelu: `http://<IP urządzenia>:31415`.
 
-## Wsparcie
-Jeśli projekt jest pomocny, możesz postawić kawę:
+## Ręczna naprawa (jeśli skrypt nadal nie działa)
+Jeśli instalacja nadal się nie powiedzie, wykonaj następujące kroki:
+
+1. **Sprawdzenie demona Dockera** (na hoście):
+   ```
+   balena exec -it ubuntu-piphi /bin/bash
+   pgrep dockerd
+   ```
+   - Jeśli brak wyniku, uruchom ręcznie:
+     ```
+     /piphi-network/start-docker.sh
+     ```
+   - Sprawdź logi:
+     ```
+     cat /piphi-network/dockerd.log
+     ```
+
+2. **Naprawa GPS** (w kontenerze):
+   ```
+   ls /dev/ttyACM0
+   gpsd /dev/ttyACM0
+   cgps -s
+   ```
+   - Jeśli brak `/dev/ttyACM0`, sprawdź na hoście:
+     ```
+     lsusb
+     ls /dev/ttyACM*
+     ```
+
+3. **Uruchomienie usług ręcznie** (w kontenerze):
+   ```
+   cd /piphi-network
+   docker compose pull
+   docker compose up -d
+   docker compose ps
+   ```
+
+4. **Restart kontenera** (na hoście):
+   ```
+   balena restart ubuntu-piphi
+   ```
+
+## Uwagi
+- **Demon Dockera**: Skrypt teraz tworzy `start-docker.sh` przed uruchomieniem kontenera, co eliminuje błąd `no such file or directory`. Pętla w `start-docker.sh` zapewnia automatyczne przywracanie demona po awarii.
+- **GPS**: Uruchamianie `gpsd` jest teraz niezawodne, z weryfikacją urządzenia `/dev/ttyACM0`.
+- **Panel PiPhi**: Sprawdź w przeglądarce `http://<IP urządzenia>:31415`. Jeśli nie działa, zweryfikuj port:
+  ```
+  balena exec ubuntu-piphi nc -z 127.0.0.1 31415
+  ```
+- **Ostrzeżenie o swap**: Jest to normalne w balenaOS i nie wpływa na działanie przy 4GB RAM.
+- **Helium Miner**: Kontenery Helium (`pktfwd_`, `miner_`, itp.) nie są naruszane przez instalację.
+
+## Weryfikacja po instalacji
+Po wykonaniu skryptu prześlij wyniki następujących komend, aby potwierdzić poprawność instalacji:
+
+- Status kontenerów:
+  ```
+  balena ps -a
+  balena exec ubuntu-piphi docker compose ps
+  ```
+- Logi:
+  ```
+  balena logs ubuntu-piphi
+  balena exec ubuntu-piphi cat /piphi-network/dockerd.log
+  balena exec ubuntu-piphi cat /tmp/apt.log
+  balena exec ubuntu-piphi docker logs piphi-network-image
+  ```
+- Dostępność panelu:
+  - Sprawdź w przeglądarce: `http://<IP urządzenia>:31415`
+  - W konsoli:
+    ```
+    balena exec ubuntu-piphi nc -z 127.0.0.1 31415
+    ```
+- GPS:
+  ```
+  balena exec -it ubuntu-piphi cgps -s
+  ```
+
+## Support My Work
+If you find this script helpful, consider supporting the project:
 [![ko-fi](https://ko-fi.com/img/githubbutton_sm.svg)](https://ko-fi.com/B0B01KMW5G)
