@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # Skrypt instalacyjny PiPhi Network na SenseCAP M1 z balenaOS
-# Wersja: 2.2
+# Wersja: 2.3
 # Autor: hattimon (z pomocą Grok, xAI)
 # Data: September 02, 2025
 # Opis: Instaluje PiPhi Network obok Helium Miner, z obsługą GPS dongle (U-Blox 7).
@@ -77,10 +77,21 @@ function install() {
     balena exec ubuntu-piphi apt-get install -y docker-ce docker-ce-cli containerd.io docker-compose-plugin || { echo -e "Błąd instalacji Dockera"; exit 1; }
     
     echo -e "Uruchamianie daemona Dockera..."
-    balena exec ubuntu-piphi bash -c "dockerd --host=unix:///var/run/docker.sock --storage-driver=vfs &" || { echo -e "Błąd uruchamiania daemona Dockera"; exit 1; }
-    echo -e "Czekanie na uruchomienie daemona Dockera (10 sekund)..."
-    sleep 10
-    balena exec ubuntu-piphi bash -c "docker info" || { echo -e "Błąd weryfikacji daemona Dockera"; exit 1; }
+    balena exec ubuntu-piphi bash -c "nohup dockerd --host=unix:///var/run/docker.sock --storage-driver=vfs > /piphi-network/dockerd.log 2>&1 &" || { echo -e "Błąd uruchamiania daemona Dockera"; exit 1; }
+    echo -e "Czekanie na uruchomienie daemona Dockera (maks. 30 sekund)..."
+    for i in {1..6}; do
+        if balena exec ubuntu-piphi bash -c "docker info" > /dev/null 2>&1; then
+            echo -e "Daemon Dockera uruchomiony poprawnie."
+            break
+        fi
+        echo -e "Czekanie na daemon Dockera... ($((i*5)) sekund)"
+        sleep 5
+        if [ $i -eq 6 ]; then
+            echo -e "Błąd: Daemon Dockera nie uruchomił się w ciągu 30 sekund."
+            echo -e "Sprawdź logi: balena exec ubuntu-piphi cat /piphi-network/dockerd.log"
+            exit 1
+        fi
+    done
     
     echo -e "Modyfikacja docker-compose.yml dla obsługi GPS..."
     balena exec ubuntu-piphi bash -c "cd /piphi-network && yq e 'del(.version)' -i docker-compose.yml && yq e '.services.piphi.devices += [\"/dev/ttyACM0:/dev/ttyACM0\"] | .services.piphi.environment += [\"GPS_DEVICE=/dev/ttyACM0\"]' -i docker-compose.yml" || { echo -e "Błąd modyfikacji docker-compose.yml"; exit 1; }
@@ -106,6 +117,7 @@ function install() {
     echo -e "Instalacja zakończona! Dostęp do PiPhi: http://<IP urządzenia>:31415"
     echo -e "Sprawdź GPS w Ubuntu: balena exec -it ubuntu-piphi cgps -s"
     echo -e "Logi PiPhi: balena exec ubuntu-piphi docker logs <nazwa_kontenera_piphi>"
+    echo -e "Logi Dockera: balena exec ubuntu-piphi cat /piphi-network/dockerd.log"
     echo -e "Uwaga: Umieść urządzenie na zewnątrz dla fix GPS (1–5 minut)."
 }
 
@@ -113,7 +125,7 @@ function install() {
 echo -e ""
 echo -e "================================================================"
 echo -e "Skrypt instalacyjny PiPhi Network na SenseCAP M1 z balenaOS"
-echo -e "Wersja: 2.2 | Data: September 02, 2025"
+echo -e "Wersja: 2.3 | Data: September 02, 2025"
 echo -e "================================================================"
 echo -e "1 - Instalacja PiPhi Network z obsługą GPS"
 echo -e "2 - Wyjście"
