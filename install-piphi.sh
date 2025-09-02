@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # PiPhi Network Installation Script for SenseCAP M1 with balenaOS
-# Version: 2.16
+# Version: 2.17
 # Author: hattimon (with assistance from Grok, xAI)
 # Date: September 02, 2025, 09:30 PM CEST
 # Description: Installs PiPhi Network alongside Helium Miner, with GPS dongle (U-Blox 7) support and automatic startup on reboot, ensuring PiPhi panel availability.
@@ -48,7 +48,7 @@ MESSAGES[pl,compose_invalid]="Pobrany plik docker-compose.yml jest nieprawidłow
 MESSAGES[pl,checking_network]="Sprawdzanie połączenia sieciowego..."
 MESSAGES[pl,network_error]="Błąd połączenia z Docker Hub. Ponawianie..."
 MESSAGES[pl,setting_dns]="Ustawianie DNS na Google (8.8.8.8) w kontenerze..."
-MESSAGES[pl,dns_error]="Błąd ustawiania DNS w kontenerze"
+MESSAGES[pl,dns_error]="Błąd ustawiania DNS w kontenerze. Sprawdź logi: balena logs ubuntu-piphi"
 MESSAGES[pl,pulling_ubuntu]="Pobieranie obrazu Ubuntu (próba %d/3)..."
 MESSAGES[pl,pull_error]="Błąd pobierania obrazu Ubuntu po 3 próbach"
 MESSAGES[pl,running_container]="Uruchamianie kontenera Ubuntu z PiPhi..."
@@ -57,7 +57,7 @@ MESSAGES[pl,waiting_container]="Czekanie na uruchomienie kontenera Ubuntu (maks.
 MESSAGES[pl,waiting_container_progress]="Czekanie na kontener Ubuntu... (%ds sekund)"
 MESSAGES[pl,container_failed]="Kontener ubuntu-piphi nie osiągnął stanu Up. Sprawdź logi: balena logs ubuntu-piphi"
 MESSAGES[pl,installing_deps]="Instalacja zależności w Ubuntu..."
-MESSAGES[pl,deps_error]="Błąd instalacji podstawowych zależności"
+MESSAGES[pl,deps_error]="Błąd instalacji podstawowych zależności. Sprawdź logi: balena logs ubuntu-piphi lub balena exec ubuntu-piphi cat /var/log/apt/term.log"
 MESSAGES[pl,installing_yq]="Instalacja yq do modyfikacji YAML..."
 MESSAGES[pl,yq_error]="Błąd instalacji yq"
 MESSAGES[pl,configuring_repo]="Konfiguracja repozytorium Dockera..."
@@ -108,7 +108,7 @@ MESSAGES[en,compose_invalid]="Downloaded docker-compose.yml is invalid or does n
 MESSAGES[en,checking_network]="Checking network connectivity..."
 MESSAGES[en,network_error]="Error connecting to Docker Hub. Retrying..."
 MESSAGES[en,setting_dns]="Setting DNS to Google (8.8.8.8) in container..."
-MESSAGES[en,dns_error]="Error setting DNS in container"
+MESSAGES[en,dns_error]="Error setting DNS in container. Check logs: balena logs ubuntu-piphi"
 MESSAGES[en,pulling_ubuntu]="Pulling Ubuntu image (attempt %d/3)..."
 MESSAGES[en,pull_error]="Error pulling Ubuntu image after 3 attempts"
 MESSAGES[en,running_container]="Running Ubuntu container with PiPhi..."
@@ -117,7 +117,7 @@ MESSAGES[en,waiting_container]="Waiting for Ubuntu container to start (max 60 se
 MESSAGES[en,waiting_container_progress]="Waiting for Ubuntu container... (%ds seconds)"
 MESSAGES[en,container_failed]="Container ubuntu-piphi failed to reach Up state. Check logs: balena logs ubuntu-piphi"
 MESSAGES[en,installing_deps]="Installing dependencies in Ubuntu..."
-MESSAGES[en,deps_error]="Error installing core dependencies"
+MESSAGES[en,deps_error]="Error installing core dependencies. Check logs: balena logs ubuntu-piphi or balena exec ubuntu-piphi cat /var/log/apt/term.log"
 MESSAGES[en,installing_yq]="Installing yq for YAML modification..."
 MESSAGES[en,yq_error]="Error installing yq"
 MESSAGES[en,configuring_repo]="Configuring Docker repository..."
@@ -179,13 +179,14 @@ function exec_with_retry() {
     local max_attempts=3
     local attempt=1
     while [ $attempt -le $max_attempts ]; do
-        if balena exec -t ubuntu-piphi bash -c "$cmd"; then
+        if balena exec -t ubuntu-piphi bash -c "$cmd 2>&1 | tee /tmp/apt.log"; then
             return 0
         fi
         msg "waiting_container_progress" $((attempt*5))
         sleep 5
         attempt=$((attempt+1))
     done
+    balena exec -t ubuntu-piphi cat /tmp/apt.log
     return 1
 }
 
@@ -314,18 +315,6 @@ EOL
         sed -i '/^version:/d' docker-compose.yml
     fi
 
-    # Create start-docker.sh in /mnt/data/piphi-network to ensure it exists before container start
-    msg "configuring_daemon"
-    cat > /mnt/data/piphi-network/start-docker.sh << EOL
-#!/bin/bash
-nohup dockerd --host=unix:///var/run/docker.sock --storage-driver=vfs > /piphi-network/dockerd.log 2>&1 &
-sleep 10
-cd /piphi-network && docker compose pull
-sleep 5
-cd /piphi-network && docker compose up -d
-EOL
-    chmod +x /mnt/data/piphi-network/start-docker.sh
-
     # Check network connectivity before pulling image (on host)
     msg "checking_network"
     if ! ping -c 1 8.8.8.8 >/dev/null 2>&1; then
@@ -350,9 +339,9 @@ EOL
         fi
     done
 
-    # Run Ubuntu container with appropriate resources and automatic restart (on host)
+    # Run Ubuntu container with minimal startup command (on host)
     msg "running_container"
-    balena run -d --privileged -v /mnt/data/piphi-network:/piphi-network -p 31415:31415 -p 5432:5432 -p 3000:3000 --cpus="2.0" --memory="2g" --name ubuntu-piphi --restart unless-stopped ubuntu:20.04 /bin/bash -c "/piphi-network/start-docker.sh && while true; do sleep 3600; done" || {
+    balena run -d --privileged -v /mnt/data/piphi-network:/piphi-network -p 31415:31415 -p 5432:5432 -p 3000:3000 --cpus="2.0" --memory="2g" --name ubuntu-piphi --restart unless-stopped ubuntu:20.04 /bin/bash -c "while true; do sleep 3600; done" || {
         msg "run_error"
         balena logs ubuntu-piphi
         exit 1
@@ -428,12 +417,32 @@ EOL
         exit 1
     }
 
-    # Start Docker daemon (already started via start-docker.sh, but verify)
+    # Create startup script for Docker daemon and services (in container)
+    msg "configuring_daemon"
+    exec_with_retry "cat > /piphi-network/start-docker.sh << EOL
+#!/bin/bash
+nohup dockerd --host=unix:///var/run/docker.sock --storage-driver=vfs > /piphi-network/dockerd.log 2>&1 &
+sleep 10
+cd /piphi-network && docker compose pull
+sleep 5
+cd /piphi-network && docker compose up -d
+EOL" || {
+        msg "run_error"
+        balena logs ubuntu-piphi
+        exit 1
+    }
+    exec_with_retry "chmod +x /piphi-network/start-docker.sh" || {
+        msg "run_error"
+        balena logs ubuntu-piphi
+        exit 1
+    }
+
+    # Start Docker daemon
     msg "starting_daemon"
     exec_with_retry "/piphi-network/start-docker.sh" || {
         msg "daemon_error"
-        balena logs ubuntu-piphi
         exec_with_retry "cat /piphi-network/dockerd.log"
+        balena logs ubuntu-piphi
         exit 1
     }
     msg "waiting_daemon"
@@ -540,14 +549,14 @@ echo -e ""
 msg "separator"
 if [ "$LANGUAGE" = "pl" ]; then
     echo -e "Skrypt instalacyjny PiPhi Network na SenseCAP M1 z balenaOS"
-    echo -e "Wersja: 2.16 | Data: 02 września 2025, 21:30 CEST"
+    echo -e "Wersja: 2.17 | Data: 02 września 2025, 21:30 CEST"
     echo -e "================================================================"
     echo -e "1 - Instalacja PiPhi Network z obsługą GPS i automatycznym startem"
     echo -e "2 - Wyjście"
     echo -e "3 - Zmień na język Angielski"
 else
     echo -e "PiPhi Network Installation Script for SenseCAP M1 with balenaOS"
-    echo -e "Version: 2.16 | Date: September 02, 2025, 09:30 PM CEST"
+    echo -e "Version: 2.17 | Date: September 02, 2025, 09:30 PM CEST"
     echo -e "================================================================"
     echo -e "1 - Install PiPhi Network with GPS support and automatic startup"
     echo -e "2 - Exit"
