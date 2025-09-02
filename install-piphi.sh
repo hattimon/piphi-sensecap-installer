@@ -1,9 +1,9 @@
 #!/bin/bash
 
 # PiPhi Network Installation Script for SenseCAP M1 with balenaOS
-# Version: 2.23
+# Version: 2.24
 # Author: hattimon (with assistance from Grok, xAI)
-# Date: September 03, 2025, 12:50 AM CEST
+# Date: September 03, 2025, 01:45 AM CEST
 # Description: Installs PiPhi Network alongside Helium Miner, with GPS dongle (U-Blox 7) support and automatic startup on reboot, ensuring PiPhi panel availability and Docker daemon auto-restart.
 # Requirements: balenaOS (tested on 2.80.3+rev1), USB GPS dongle, SSH access as root.
 
@@ -69,7 +69,7 @@ MESSAGES[pl,repo_error]="Błąd aktualizacji po dodaniu repozytorium Dockera"
 MESSAGES[pl,installing_docker]="Instalacja Dockera i docker-compose..."
 MESSAGES[pl,docker_error]="Błąd instalacji Dockera"
 MESSAGES[pl,configuring_daemon]="Konfiguracja automatycznego startu daemona Dockera..."
-MESSAGES[pl,starting_daemon]="Uruchamianie daemona Dockera..."
+MESSAGES[pl,starting_daemon]="Uruchamianie daemona Dockera... (może potrwać 15-30 minut z powodu instalacji pakietów, np. Grafana)"
 MESSAGES[pl,waiting_daemon]="Czekanie na uruchomienie daemona Dockera (maks. 30 sekund)..."
 MESSAGES[pl,daemon_success]="Daemon Dockera uruchomiony poprawnie."
 MESSAGES[pl,waiting_daemon_progress]="Czekanie na daemon Dockera... (%ds sekund)"
@@ -134,7 +134,7 @@ MESSAGES[en,repo_error]="Error updating after adding Docker repository"
 MESSAGES[en,installing_docker]="Installing Docker and docker-compose..."
 MESSAGES[en,docker_error]="Error installing Docker"
 MESSAGES[en,configuring_daemon]="Configuring automatic Docker daemon startup..."
-MESSAGES[en,starting_daemon]="Starting Docker daemon..."
+MESSAGES[en,starting_daemon]="Starting Docker daemon... (may take 15-30 minutes due to package installation, e.g., Grafana)"
 MESSAGES[en,waiting_daemon]="Waiting for Docker daemon to start (max 30 seconds)..."
 MESSAGES[en,daemon_success]="Docker daemon started successfully."
 MESSAGES[en,waiting_daemon_progress]="Waiting for Docker daemon... (%ds seconds)"
@@ -496,9 +496,9 @@ EOL
         exit 1
     }
 
-    # Start Docker daemon
+    # Start Docker daemon with progress indication
     msg "starting_daemon"
-    exec_with_retry "/piphi-network/start-docker.sh" || {
+    exec_with_retry "echo 'Starting Docker daemon with package installation (e.g., Grafana). This may take 15-30 minutes due to background processes. Monitoring progress...' && /piphi-network/start-docker.sh" || {
         msg "daemon_error"
         exec_with_retry "cat /piphi-network/dockerd.log"
         balena logs ubuntu-piphi
@@ -608,14 +608,14 @@ echo -e ""
 msg "separator"
 if [ "$LANGUAGE" = "pl" ]; then
     echo -e "Skrypt instalacyjny PiPhi Network na SenseCAP M1 z balenaOS"
-    echo -e "Wersja: 2.23 | Data: 03 września 2025, 00:50 CEST"
+    echo -e "Wersja: 2.24 | Data: 03 września 2025, 01:45 CEST"
     echo -e "================================================================"
     echo -e "1 - Instalacja PiPhi Network z obsługą GPS i automatycznym startem"
     echo -e "2 - Wyjście"
     echo -e "3 - Zmień na język Angielski"
 else
     echo -e "PiPhi Network Installation Script for SenseCAP M1 with balenaOS"
-    echo -e "Version: 2.23 | Date: September 03, 2025, 12:50 AM CEST"
+    echo -e "Version: 2.24 | Date: September 03, 2025, 01:45 AM CEST"
     echo -e "================================================================"
     echo -e "1 - Install PiPhi Network with GPS support and automatic startup"
     echo -e "2 - Exit"
