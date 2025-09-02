@@ -1,9 +1,9 @@
 #!/bin/bash
 
 # PiPhi Network Installation Script for SenseCAP M1 with balenaOS
-# Version: 2.11
+# Version: 2.12
 # Author: hattimon (with assistance from Grok, xAI)
-# Date: September 02, 2025, 06:40 PM CEST
+# Date: September 02, 2025, 07:00 PM CEST
 # Description: Installs PiPhi Network alongside Helium Miner, with GPS dongle (U-Blox 7) support and automatic startup on reboot, ensuring PiPhi panel availability.
 # Requirements: balenaOS (tested on 2.80.3+rev1), USB GPS dongle, SSH access as root.
 
@@ -49,9 +49,11 @@ MESSAGES[pl,pulling_ubuntu]="Pobieranie obrazu Ubuntu..."
 MESSAGES[pl,pull_error]="Błąd pobierania obrazu Ubuntu"
 MESSAGES[pl,running_container]="Uruchamianie kontenera Ubuntu z PiPhi..."
 MESSAGES[pl,run_error]="Błąd uruchamiania kontenera Ubuntu"
-MESSAGES[pl,waiting_container]="Czekanie na uruchomienie kontenera Ubuntu (5 sekund)..."
-MESSAGES[pl,configuring_timezone]="Konfiguracja strefy czasowej (domyślnie Europe/Warsaw)..."
-MESSAGES[pl,timezone_prompt]="Wpisz strefę czasową (np. Europe/Warsaw) lub naciśnij ENTER dla domyślnej: "
+MESSAGES[pl,waiting_container]="Czekanie na uruchomienie kontenera Ubuntu (maks. 30 sekund)..."
+MESSAGES[pl,waiting_container_progress]="Czekanie na kontener Ubuntu... (%ds sekund)"
+MESSAGES[pl,configuring_timezone]="Konfiguracja strefy czasowej (domyślnie Europe/Warsaw)"
+MESSAGES[pl,timezone_prompt]="Wpisz strefę czasową (np. Europe/Warsaw) lub naciśnij ENTER dla domyślnej (Europe/Warsaw): "
+MESSAGES[pl,timezone_set]="Strefa czasowa ustawiona na: %s"
 MESSAGES[pl,timezone_error]="Błąd konfiguracji strefy czasowej"
 MESSAGES[pl,installing_deps]="Instalacja zależności w Ubuntu..."
 MESSAGES[pl,deps_error]="Błąd instalacji podstawowych zależności"
@@ -108,9 +110,11 @@ MESSAGES[en,pulling_ubuntu]="Pulling Ubuntu image..."
 MESSAGES[en,pull_error]="Error pulling Ubuntu image"
 MESSAGES[en,running_container]="Running Ubuntu container with PiPhi..."
 MESSAGES[en,run_error]="Error running Ubuntu container"
-MESSAGES[en,waiting_container]="Waiting for Ubuntu container to start (5 seconds)..."
-MESSAGES[en,configuring_timezone]="Configuring timezone (default: Europe/Warsaw)..."
-MESSAGES[en,timezone_prompt]="Enter timezone (e.g., Europe/Warsaw) or press ENTER for default: "
+MESSAGES[en,waiting_container]="Waiting for Ubuntu container to start (max 30 seconds)..."
+MESSAGES[en,waiting_container_progress]="Waiting for Ubuntu container... (%ds seconds)"
+MESSAGES[en,configuring_timezone]="Configuring timezone (default: Europe/Warsaw)"
+MESSAGES[en,timezone_prompt]="Enter timezone (e.g., Europe/Warsaw) or press ENTER for default (Europe/Warsaw): "
+MESSAGES[en,timezone_set]="Timezone set to: %s"
 MESSAGES[en,timezone_error]="Error configuring timezone"
 MESSAGES[en,installing_deps]="Installing dependencies in Ubuntu..."
 MESSAGES[en,deps_error]="Error installing core dependencies"
@@ -151,6 +155,20 @@ MESSAGES[en,gps_note]="Note: Place the device outdoors for GPS fix (1–5 minute
 function msg() {
     local key=$1
     printf "${MESSAGES[$LANGUAGE,$key]}\n" "${@:2}"
+}
+
+# Function to wait for container to be in "Up" state
+function wait_for_container() {
+    local container_name=$1
+    local max_wait=$2
+    for i in $(seq 1 $((max_wait/5))); do
+        if balena ps -a --format "{{.Names}} {{.State}}" | grep -q "$container_name Up"; then
+            return 0
+        fi
+        msg "waiting_container_progress" $((i*5))
+        sleep 5
+    done
+    return 1
 }
 
 # Installation function
@@ -294,7 +312,10 @@ EOL
 
     # Wait for the container to fully start
     msg "waiting_container"
-    sleep 5
+    if ! wait_for_container "ubuntu-piphi" 30; then
+        msg "run_error"
+        exit 1
+    fi
 
     # Configure timezone non-interactively
     msg "configuring_timezone"
@@ -306,6 +327,7 @@ EOL
         msg "timezone_error"
         exit 1
     }
+    msg "timezone_set" "$timezone"
 
     # Configure inside the Ubuntu container
     msg "installing_deps"
@@ -354,14 +376,14 @@ EOL
     msg "starting_daemon"
     balena exec ubuntu-piphi /usr/local/bin/start-docker.sh
     msg "waiting_daemon"
-    for i in {1..12}; do
+    for i in {1..6}; do
         if balena exec ubuntu-piphi bash -c "docker info" > /dev/null 2>&1; then
             msg "daemon_success"
             break
         fi
         msg "waiting_daemon_progress" $((i*5))
         sleep 5
-        if [ $i -eq 12 ]; then
+        if [ $i -eq 6 ]; then
             msg "daemon_error"
             msg "daemon_logs"
             exit 1
@@ -444,14 +466,14 @@ echo -e ""
 msg "separator"
 if [ "$LANGUAGE" = "pl" ]; then
     echo -e "Skrypt instalacyjny PiPhi Network na SenseCAP M1 z balenaOS"
-    echo -e "Wersja: 2.11 | Data: 02 września 2025, 18:40 CEST"
+    echo -e "Wersja: 2.12 | Data: 02 września 2025, 19:00 CEST"
     echo -e "================================================================"
     echo -e "1 - Instalacja PiPhi Network z obsługą GPS i automatycznym startem"
     echo -e "2 - Wyjście"
     echo -e "3 - Zmień na język Angielski"
 else
     echo -e "PiPhi Network Installation Script for SenseCAP M1 with balenaOS"
-    echo -e "Version: 2.11 | Date: September 02, 2025, 06:40 PM CEST"
+    echo -e "Version: 2.12 | Date: September 02, 2025, 07:00 PM CEST"
     echo -e "================================================================"
     echo -e "1 - Install PiPhi Network with GPS support and automatic startup"
     echo -e "2 - Exit"
