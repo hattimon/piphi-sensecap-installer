@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # Skrypt instalacyjny PiPhi Network na SenseCAP M1 z balenaOS
-# Wersja: 2.0
+# Wersja: 2.1
 # Autor: hattimon (z pomocą Grok, xAI)
 # Data: September 02, 2025
 # Opis: Instaluje PiPhi Network obok Helium Miner, z obsługą GPS dongle (U-Blox 7).
@@ -77,7 +77,9 @@ function install() {
     balena exec ubuntu-piphi apt-get install -y docker-ce docker-ce-cli containerd.io docker-compose-plugin || { echo -e "Błąd instalacji Dockera"; exit 1; }
     
     echo -e "Uruchamianie daemona Dockera..."
-    balena exec ubuntu-piphi service docker start || { echo -e "Błąd uruchamiania daemona Dockera"; exit 1; }
+    balena exec ubuntu-piphi bash -c "dockerd --host=unix:///var/run/docker.sock &" || { echo -e "Błąd uruchamiania daemona Dockera"; exit 1; }
+    sleep 5  # Poczekaj, aż daemon się uruchomi
+    balena exec ubuntu-piphi bash -c "docker info" || { echo -e "Błąd weryfikacji daemona Dockera"; exit 1; }
     
     echo -e "Modyfikacja docker-compose.yml dla obsługi GPS..."
     balena exec ubuntu-piphi bash -c "cd /piphi-network && yq e 'del(.version)' -i docker-compose.yml && yq e '.services.piphi.devices += [\"/dev/ttyACM0:/dev/ttyACM0\"] | .services.piphi.environment += [\"GPS_DEVICE=/dev/ttyACM0\"]' -i docker-compose.yml" || { echo -e "Błąd modyfikacji docker-compose.yml"; exit 1; }
@@ -110,7 +112,7 @@ function install() {
 echo -e ""
 echo -e "================================================================"
 echo -e "Skrypt instalacyjny PiPhi Network na SenseCAP M1 z balenaOS"
-echo -e "Wersja: 2.0 | Data: September 02, 2025"
+echo -e "Wersja: 2.1 | Data: September 02, 2025"
 echo -e "================================================================"
 echo -e "1 - Instalacja PiPhi Network z obsługą GPS"
 echo -e "2 - Wyjście"
