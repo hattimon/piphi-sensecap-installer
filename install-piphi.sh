@@ -1,9 +1,9 @@
 #!/bin/bash
 
 # PiPhi Network Installation Script for SenseCAP M1 with balenaOS
-# Version: 2.13
+# Version: 2.14
 # Author: hattimon (with assistance from Grok, xAI)
-# Date: September 02, 2025, 08:45 PM CEST
+# Date: September 02, 2025, 09:00 PM CEST
 # Description: Installs PiPhi Network alongside Helium Miner, with GPS dongle (U-Blox 7) support and automatic startup on reboot, ensuring PiPhi panel availability.
 # Requirements: balenaOS (tested on 2.80.3+rev1), USB GPS dongle, SSH access as root.
 
@@ -45,8 +45,10 @@ MESSAGES[pl,downloading_compose]="Pobieranie docker-compose.yml..."
 MESSAGES[pl,download_error]="Błąd pobierania docker-compose.yml"
 MESSAGES[pl,verifying_compose]="Weryfikacja pobranego pliku docker-compose.yml..."
 MESSAGES[pl,compose_invalid]="Pobrany plik docker-compose.yml jest nieprawidłowy lub nie zawiera usługi 'software'. Używanie domyślnego pliku."
-MESSAGES[pl,pulling_ubuntu]="Pobieranie obrazu Ubuntu..."
-MESSAGES[pl,pull_error]="Błąd pobierania obrazu Ubuntu"
+MESSAGES[pl,setting_dns]="Ustawianie DNS na Google (8.8.8.8)..."
+MESSAGES[pl,dns_error]="Błąd ustawiania DNS"
+MESSAGES[pl,pulling_ubuntu]="Pobieranie obrazu Ubuntu (próba %d/3)..."
+MESSAGES[pl,pull_error]="Błąd pobierania obrazu Ubuntu po 3 próbach"
 MESSAGES[pl,running_container]="Uruchamianie kontenera Ubuntu z PiPhi..."
 MESSAGES[pl,run_error]="Błąd uruchamiania kontenera Ubuntu"
 MESSAGES[pl,waiting_container]="Czekanie na uruchomienie kontenera Ubuntu (maks. 30 sekund)..."
@@ -73,7 +75,7 @@ MESSAGES[pl,services_error]="Błąd podczas uruchamiania usług. Czekanie 10 sek
 MESSAGES[pl,services_failed]="Błąd: Nie udało się uruchomić usług po 3 próbach."
 MESSAGES[pl,services_logs]="Sprawdź logi: balena exec ubuntu-piphi docker logs piphi-network-image"
 MESSAGES[pl,checking_network]="Sprawdzanie połączenia sieciowego..."
-MESSAGES[pl,network_error]="Błąd połączenia z Docker Hub. Ustawianie DNS i ponawianie..."
+MESSAGES[pl,network_error]="Błąd połączenia z Docker Hub. Ponawianie..."
 MESSAGES[pl,restarting_container]="Restartowanie kontenera ubuntu-piphi..."
 MESSAGES[pl,waiting_piphi]="Czekanie na dostępność panelu PiPhi na porcie 31415 (maks. 60 sekund)..."
 MESSAGES[pl,piphi_success]="Panel PiPhi dostępny na http://<IP urządzenia>:31415!"
@@ -102,8 +104,10 @@ MESSAGES[en,downloading_compose]="Downloading docker-compose.yml..."
 MESSAGES[en,download_error]="Error downloading docker-compose.yml"
 MESSAGES[en,verifying_compose]="Verifying downloaded docker-compose.yml..."
 MESSAGES[en,compose_invalid]="Downloaded docker-compose.yml is invalid or does not contain 'software' service. Using default file."
-MESSAGES[en,pulling_ubuntu]="Pulling Ubuntu image..."
-MESSAGES[en,pull_error]="Error pulling Ubuntu image"
+MESSAGES[en,setting_dns]="Setting DNS to Google (8.8.8.8)..."
+MESSAGES[en,dns_error]="Error setting DNS"
+MESSAGES[en,pulling_ubuntu]="Pulling Ubuntu image (attempt %d/3)..."
+MESSAGES[en,pull_error]="Error pulling Ubuntu image after 3 attempts"
 MESSAGES[en,running_container]="Running Ubuntu container with PiPhi..."
 MESSAGES[en,run_error]="Error running Ubuntu container"
 MESSAGES[en,waiting_container]="Waiting for Ubuntu container to start (max 30 seconds)..."
@@ -130,7 +134,7 @@ MESSAGES[en,services_error]="Error starting services. Waiting 10 seconds before 
 MESSAGES[en,services_failed]="Error: Failed to start services after 3 attempts."
 MESSAGES[en,services_logs]="Check logs: balena exec ubuntu-piphi docker logs piphi-network-image"
 MESSAGES[en,checking_network]="Checking network connectivity..."
-MESSAGES[en,network_error]="Error connecting to Docker Hub. Setting DNS and retrying..."
+MESSAGES[en,network_error]="Error connecting to Docker Hub. Retrying..."
 MESSAGES[en,restarting_container]="Restarting ubuntu-piphi container..."
 MESSAGES[en,waiting_piphi]="Waiting for PiPhi panel availability on port 31415 (max 60 seconds)..."
 MESSAGES[en,piphi_success]="PiPhi panel available at http://<device IP>:31415!"
@@ -307,12 +311,29 @@ EOL
         sed -i '/^version:/d' docker-compose.yml
     fi
 
-    # Pull Ubuntu image
-    msg "pulling_ubuntu"
-    balena pull ubuntu:20.04 || {
-        msg "pull_error"
+    # Set DNS to Google (8.8.8.8) to avoid timeout issues
+    msg "setting_dns"
+    echo "nameserver 8.8.8.8" > /etc/resolv.conf || {
+        msg "dns_error"
         exit 1
     }
+
+    # Pull Ubuntu image with retries
+    msg "pulling_ubuntu" 1
+    local attempt
+    for attempt in {1..3}; do
+        if balena pull ubuntu:20.04; then
+            break
+        fi
+        if [ $attempt -lt 3 ]; then
+            msg "network_error"
+            msg "pulling_ubuntu" $((attempt+1))
+            sleep 5
+        else
+            msg "pull_error"
+            exit 1
+        fi
+    done
 
     # Run Ubuntu container with appropriate resources and automatic restart
     msg "running_container"
@@ -510,14 +531,14 @@ echo -e ""
 msg "separator"
 if [ "$LANGUAGE" = "pl" ]; then
     echo -e "Skrypt instalacyjny PiPhi Network na SenseCAP M1 z balenaOS"
-    echo -e "Wersja: 2.13 | Data: 02 września 2025, 20:45 CEST"
+    echo -e "Wersja: 2.14 | Data: 02 września 2025, 21:00 CEST"
     echo -e "================================================================"
     echo -e "1 - Instalacja PiPhi Network z obsługą GPS i automatycznym startem"
     echo -e "2 - Wyjście"
     echo -e "3 - Zmień na język Angielski"
 else
     echo -e "PiPhi Network Installation Script for SenseCAP M1 with balenaOS"
-    echo -e "Version: 2.13 | Date: September 02, 2025, 08:45 PM CEST"
+    echo -e "Version: 2.14 | Date: September 02, 2025, 09:00 PM CEST"
     echo -e "================================================================"
     echo -e "1 - Install PiPhi Network with GPS support and automatic startup"
     echo -e "2 - Exit"
