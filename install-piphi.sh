@@ -1,9 +1,9 @@
 #!/bin/bash
 
 # PiPhi Network Installation Script for SenseCAP M1 with balenaOS
-# Version: 2.11
+# Version: 2.12
 # Author: hattimon (with assistance from Grok, xAI)
-# Date: September 02, 2025, 07:40 PM CEST
+# Date: September 02, 2025, 08:30 PM CEST
 # Description: Installs PiPhi Network alongside Helium Miner, with GPS dongle (U-Blox 7) support and automatic startup on reboot, ensuring PiPhi panel availability.
 # Requirements: balenaOS (tested on 2.80.3+rev1), USB GPS dongle, SSH access as root.
 
@@ -154,7 +154,7 @@ function wait_for_container() {
     local container_name=$1
     local max_wait=$2
     for i in $(seq 1 $((max_wait/5))); do
-        if balena ps -a --format "{{.Names}} {{.Status}}" | grep -q "$container_name Up"; then
+        if balena ps -a | grep "$container_name" | grep -q "Up"; then
             return 0
         fi
         msg "waiting_container_progress" $((i*5))
@@ -446,14 +446,14 @@ echo -e ""
 msg "separator"
 if [ "$LANGUAGE" = "pl" ]; then
     echo -e "Skrypt instalacyjny PiPhi Network na SenseCAP M1 z balenaOS"
-    echo -e "Wersja: 2.11 | Data: 02 września 2025, 19:40 CEST"
+    echo -e "Wersja: 2.12 | Data: 02 września 2025, 20:30 CEST"
     echo -e "================================================================"
     echo -e "1 - Instalacja PiPhi Network z obsługą GPS i automatycznym startem"
     echo -e "2 - Wyjście"
     echo -e "3 - Zmień na język Angielski"
 else
     echo -e "PiPhi Network Installation Script for SenseCAP M1 with balenaOS"
-    echo -e "Version: 2.11 | Date: September 02, 2025, 07:40 PM CEST"
+    echo -e "Version: 2.12 | Date: September 02, 2025, 08:30 PM CEST"
     echo -e "================================================================"
     echo -e "1 - Install PiPhi Network with GPS support and automatic startup"
     echo -e "2 - Exit"
