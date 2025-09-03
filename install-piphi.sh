@@ -2,9 +2,10 @@
 
 # Ustawienia początkowe
 DATE=$(date +"%Y-%m-%d %H:%M %Z")
-LANGUAGE="en"
+LANGUAGE="pl"
 CONTAINER_NAME="ubuntu-piphi"
 DOCKER_COMPOSE_URL="https://chibisafe.piphi.network/docker-compose.yml"
+ALTERNATE_DOCKER_COMPOSE_URL="https://raw.githubusercontent.com/hattimon/piphi-sensecap-installer/main/docker-compose.yml" # Alternatywny URL
 
 # Funkcja wyświetlania menu
 show_menu() {
@@ -104,7 +105,16 @@ install_piphi() {
     else
         echo "Downloading docker-compose.yml..."
     fi
-    wget -q $DOCKER_COMPOSE_URL -O docker-compose.yml || { echo "Błąd: Nie udało się pobrać docker-compose.yml"; exit 1; }
+    wget -q $DOCKER_COMPOSE_URL -O docker-compose.yml || {
+        echo "Błąd: Nie udało się pobrać docker-compose.yml z $DOCKER_COMPOSE_URL"
+        echo "Próba pobrania z alternatywnego źródła: $ALTERNATE_DOCKER_COMPOSE_URL"
+        wget -q $ALTERNATE_DOCKER_COMPOSE_URL -O docker-compose.yml || {
+            echo "Błąd: Nie udało się pobrać docker-compose.yml z alternatywnego źródła."
+            echo "Pobierz plik ręcznie z: https://raw.githubusercontent.com/hattimon/piphi-sensecap-installer/main/docker-compose.yml"
+            echo "i umieść go w /mnt/data/piphi-network/, a następnie uruchom skrypt ponownie."
+            exit 1
+        }
+    }
     if [ "$LANGUAGE" = "pl" ]; then
         echo "Weryfikacja pobranego pliku docker-compose.yml..."
     else
