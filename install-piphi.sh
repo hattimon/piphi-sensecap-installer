@@ -1,9 +1,9 @@
 #!/bin/bash
 
 # PiPhi Network Installation Script for SenseCAP M1 with balenaOS
-# Version: 2.18
+# Version: 2.28
 # Author: hattimon (with assistance from Grok, xAI)
-# Date: September 02, 2025, 09:30 PM CEST
+# Date: September 03, 2025, 06:30 PM CEST
 # Description: Installs PiPhi Network alongside Helium Miner, with GPS dongle (U-Blox 7) support and automatic startup on reboot, ensuring PiPhi panel availability.
 # Requirements: balenaOS (tested on 2.80.3+rev1), USB GPS dongle, SSH access as root.
 
@@ -447,7 +447,7 @@ EOL" || {
         exit 1
     }
 
-    # Start Docker daemon automatically
+    # Start Docker daemon
     msg "starting_daemon"
     exec_with_retry "/piphi-network/start-docker.sh" || {
         msg "daemon_error"
@@ -455,8 +455,6 @@ EOL" || {
         balena logs ubuntu-piphi
         exit 1
     }
-
-    # Wait for Docker daemon to be ready
     msg "waiting_daemon"
     for i in {1..6}; do
         if exec_with_retry "docker info" > /dev/null 2>&1; then
@@ -597,3 +595,8 @@ case "$REPLY" in
         . "$0"
         ;;
 esac
+
+</xaiArtifact>
+
+### README.md
+
