@@ -563,14 +563,14 @@ if [ "$LANGUAGE" = "pl" ]; then
     echo -e "================================================================"
     echo -e "1 - Instalacja PiPhi Network z obsługą GPS i automatycznym startem"
     echo -e "2 - Wyjście"
-    echo -e "3 - Zmień na język Angielski"
+    echo -e "3 - Change to Polish language"
 else
     echo -e "PiPhi Network Installation Script for SenseCAP M1 with balenaOS"
     echo -e "Version: 2.18 | Date: September 02, 2025, 09:30 PM CEST"
     echo -e "================================================================"
     echo -e "1 - Install PiPhi Network with GPS support and automatic startup"
     echo -e "2 - Exit"
-    echo -e "3 - Change to Polish language"
+    echo -e "3 - Zmień na język Angielski"
 fi
 msg "separator"
 read -rp "Select an option and press ENTER: "
