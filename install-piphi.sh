@@ -1,9 +1,9 @@
 #!/bin/bash
 
 # PiPhi Network Installation Script for SenseCAP M1 with balenaOS
-# Version: 2.25
+# Version: 2.27
 # Author: hattimon (with assistance from Grok, xAI)
-# Date: September 03, 2025, 03:30 AM CEST
+# Date: September 03, 2025, 05:54 AM CEST
 # Description: Installs PiPhi Network alongside Helium Miner, with GPS dongle (U-Blox 7) support and automatic startup on reboot, ensuring PiPhi panel availability and Docker daemon auto-restart.
 # Requirements: balenaOS (tested on 2.80.3+rev1), USB GPS dongle, SSH access as root.
 
@@ -68,15 +68,13 @@ MESSAGES[pl,configuring_repo]="Konfiguracja repozytorium Dockera..."
 MESSAGES[pl,repo_error]="Błąd aktualizacji po dodaniu repozytorium Dockera"
 MESSAGES[pl,installing_docker]="Instalacja Dockera i docker-compose..."
 MESSAGES[pl,docker_error]="Błąd instalacji Dockera"
-MESSAGES[pl,configuring_daemon]="Konfiguracja automatycznego startu daemona Dockera..."
-MESSAGES[pl,starting_daemon]="Uruchamianie daemona Dockera... (może potrwać 15-30 minut z powodu instalacji pakietów, np. Grafana)"
+MESSAGES[pl,starting_daemon]="Uruchamianie daemona Dockera..."
 MESSAGES[pl,waiting_daemon]="Czekanie na uruchomienie daemona Dockera (maks. 30 sekund)..."
 MESSAGES[pl,daemon_success]="Daemon Dockera uruchomiony poprawnie."
 MESSAGES[pl,waiting_daemon_progress]="Czekanie na daemon Dockera... (%ds sekund)"
 MESSAGES[pl,daemon_error]="Błąd: Daemon Dockera nie uruchomił się w ciągu 30 sekund."
 MESSAGES[pl,daemon_logs]="Sprawdź logi: balena exec ubuntu-piphi cat /piphi-network/dockerd.log"
 MESSAGES[pl,starting_services]="Uruchamianie usług PiPhi (w tym panelu na porcie 31415)..."
-MESSAGES[pl,attempt_services]="Próba uruchamiania usług (%d/%d)..."
 MESSAGES[pl,services_success]="Usługi PiPhi uruchomione poprawnie. Czekanie na dostępność panelu..."
 MESSAGES[pl,services_error]="Błąd podczas uruchamiania usług. Czekanie 10 sekund przed kolejną próbą..."
 MESSAGES[pl,services_failed]="Błąd: Nie udało się uruchomić usług po 3 próbach."
@@ -133,15 +131,13 @@ MESSAGES[en,configuring_repo]="Configuring Docker repository..."
 MESSAGES[en,repo_error]="Error updating after adding Docker repository"
 MESSAGES[en,installing_docker]="Installing Docker and docker-compose..."
 MESSAGES[en,docker_error]="Error installing Docker"
-MESSAGES[en,configuring_daemon]="Configuring automatic Docker daemon startup..."
-MESSAGES[en,starting_daemon]="Starting Docker daemon... (may take 15-30 minutes due to package installation, e.g., Grafana)"
+MESSAGES[en,starting_daemon]="Starting Docker daemon..."
 MESSAGES[en,waiting_daemon]="Waiting for Docker daemon to start (max 30 seconds)..."
 MESSAGES[en,daemon_success]="Docker daemon started successfully."
 MESSAGES[en,waiting_daemon_progress]="Waiting for Docker daemon... (%ds seconds)"
 MESSAGES[en,daemon_error]="Error: Docker daemon failed to start within 30 seconds."
 MESSAGES[en,daemon_logs]="Check logs: balena exec ubuntu-piphi cat /piphi-network/dockerd.log"
 MESSAGES[en,starting_services]="Starting PiPhi services (including panel on port 31415)..."
-MESSAGES[en,attempt_services]="Attempting to start services (%d/%d)..."
 MESSAGES[en,services_success]="PiPhi services started successfully. Waiting for panel availability..."
 MESSAGES[en,services_error]="Error starting services. Waiting 10 seconds before retrying..."
 MESSAGES[en,services_failed]="Error: Failed to start services after 3 attempts."
@@ -325,39 +321,17 @@ EOL
         sed -i '/^version:/d' docker-compose.yml
     fi
 
-    # Create startup script on host before running container
+    # Create startup script on host
     msg "configuring_daemon"
     cat > /mnt/data/piphi-network/start-docker.sh << 'EOL'
 #!/bin/bash
-echo "[$(date)] Starting start-docker.sh" >> /piphi-network/dockerd.log
-while true; do
-    if ! pgrep dockerd > /dev/null; then
-        echo "[$(date)] Starting dockerd with overlay2..." >> /piphi-network/dockerd.log
-        nohup dockerd --host=unix:///var/run/docker.sock --storage-driver=overlay2 >> /piphi-network/dockerd.log 2>&1 &
-        sleep 10
-        if ! pgrep dockerd > /dev/null; then
-            echo "[$(date)] Failed to start dockerd, retrying with vfs..." >> /piphi-network/dockerd.log
-            nohup dockerd --host=unix:///var/run/docker.sock --storage-driver=vfs >> /piphi-network/dockerd.log 2>&1 &
-            sleep 10
-        fi
-    fi
-    if [ -e /dev/ttyACM0 ]; then
-        echo "[$(date)] Starting gpsd..." >> /piphi-network/dockerd.log
-        gpsd /dev/ttyACM0 >> /piphi-network/dockerd.log 2>&1
-        sleep 5
-    else
-        echo "[$(date)] GPS device /dev/ttyACM0 not found" >> /piphi-network/dockerd.log
-    fi
-    echo "[$(date)] Pulling Docker images..." >> /piphi-network/dockerd.log
-    cd /piphi-network && docker compose pull >> /piphi-network/dockerd.log 2>&1
-    sleep 5
-    echo "[$(date)] Removing old containers (if any)..." >> /piphi-network/dockerd.log
-    docker rm -f grafana db 2>/dev/null || true
-    echo "[$(date)] Starting PiPhi services..." >> /piphi-network/dockerd.log
-    cd /piphi-network && docker compose up -d >> /piphi-network/dockerd.log 2>&1
-    echo "[$(date)] Services started, monitoring dockerd..." >> /piphi-network/dockerd.log
-    sleep 60
-done
+echo "[$(date)] Starting dockerd with vfs..." >> /piphi-network/dockerd.log
+nohup dockerd --host=unix:///var/run/docker.sock --storage-driver=vfs >> /piphi-network/dockerd.log 2>&1 &
+sleep 10
+if [ -e /dev/ttyACM0 ]; then
+    echo "[$(date)] Starting gpsd..." >> /piphi-network/dockerd.log
+    gpsd /dev/ttyACM0 >> /piphi-network/dockerd.log 2>&1 &
+fi
 EOL
     chmod +x /mnt/data/piphi-network/start-docker.sh || {
         msg "run_error"
@@ -498,9 +472,9 @@ EOL
         exit 1
     }
 
-    # Start Docker daemon with progress indication
+    # Start Docker daemon once
     msg "starting_daemon"
-    exec_with_retry "echo 'Starting Docker daemon with package installation (e.g., Grafana). This may take 15-30 minutes due to background processes. Monitoring progress...' && /piphi-network/start-docker.sh" || {
+    exec_with_retry "/piphi-network/start-docker.sh" || {
         msg "daemon_error"
         exec_with_retry "cat /piphi-network/dockerd.log"
         balena logs ubuntu-piphi
@@ -522,40 +496,20 @@ EOL
         fi
     done
 
-    # Start PiPhi services with network retry
+    # Start PiPhi services manually
     msg "starting_services"
-    for attempt in {1..3}; do
-        msg "attempt_services" $attempt 3
-        if exec_with_retry "cd /piphi-network && docker compose pull && docker compose up -d"; then
-            msg "services_success"
-            break
-        else
-            msg "checking_network"
-            exec_with_retry "echo 'nameserver 8.8.8.8' > /etc/resolv.conf" || {
-                msg "network_error"
-                sleep 10
-                if [ $attempt -eq 3 ]; then
-                    msg "services_failed"
-                    exec_with_retry "cat /piphi-network/dockerd.log"
-                    balena logs ubuntu-piphi
-                    exit 1
-                fi
-                continue
-            }
-            if exec_with_retry "curl -I https://registry-1.docker.io/v2/" > /dev/null 2>&1; then
-                continue
-            else
-                msg "network_error"
-                sleep 10
-                if [ $attempt -eq 3 ]; then
-                    msg "services_failed"
-                    exec_with_retry "cat /piphi-network/dockerd.log"
-                    balena logs ubuntu-piphi
-                    exit 1
-                fi
-            fi
-        fi
-    done
+    exec_with_retry "cd /piphi-network && docker compose pull" || {
+        msg "services_error"
+        sleep 10
+        exec_with_retry "cd /piphi-network && docker compose pull"
+    }
+    exec_with_retry "cd /piphi-network && docker compose up -d" || {
+        msg "services_failed"
+        exec_with_retry "cat /piphi-network/dockerd.log"
+        balena logs ubuntu-piphi
+        exit 1
+    }
+    msg "services_success"
 
     # Wait for PiPhi panel availability
     msg "waiting_piphi"
@@ -573,12 +527,19 @@ EOL
         fi
     done
 
+    # Add cron job for automatic startup
+    msg "verifying_install"
+    exec_with_retry "crontab -l | grep -q 'piphi-network' || (crontab -l 2>/dev/null; echo '@reboot sleep 30 && cd /piphi-network && docker compose pull && docker compose up -d && docker compose ps' | crontab -)" || {
+        msg "install_error"
+        balena logs ubuntu-piphi
+        exit 1
+    }
+
     # Restart container to apply changes (on host)
     msg "restarting_container"
     balena restart ubuntu-piphi
 
     # Verification (on host and in container)
-    msg "verifying_install"
     balena ps
     exec_with_retry "cd /piphi-network && docker compose ps"
 
@@ -610,14 +571,14 @@ echo -e ""
 msg "separator"
 if [ "$LANGUAGE" = "pl" ]; then
     echo -e "Skrypt instalacyjny PiPhi Network na SenseCAP M1 z balenaOS"
-    echo -e "Wersja: 2.25 | Data: 03 września 2025, 03:30 CEST"
+    echo -e "Wersja: 2.27 | Data: 03 września 2025, 05:54 CEST"
     echo -e "================================================================"
     echo -e "1 - Instalacja PiPhi Network z obsługą GPS i automatycznym startem"
     echo -e "2 - Wyjście"
     echo -e "3 - Zmień na język Angielski"
 else
     echo -e "PiPhi Network Installation Script for SenseCAP M1 with balenaOS"
-    echo -e "Version: 2.25 | Date: September 03, 2025, 03:30 AM CEST"
+    echo -e "Version: 2.27 | Date: September 03, 2025, 05:54 AM CEST"
     echo -e "================================================================"
     echo -e "1 - Install PiPhi Network with GPS support and automatic startup"
     echo -e "2 - Exit"
